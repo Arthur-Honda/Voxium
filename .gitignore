@@ -1,1 +1,26 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
 
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+
+# Build
+build/
+out/
+
+# Compiled binaries
+*.exe
+*.dll
+*.lib
+*.obj
+*.pdb
+
+# JUCE / plugin builds
+*.vst3
+*.component
+*.aaxplugin
