@@ -13,7 +13,8 @@ public:
 
 	bool isBusesLayoutSupported(const BusesLayout& layouts) const override; // aceita canal de áudio mono/stereo
 
-	void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override; // processa o áudio, manda blocos de áudio para o plugin
+	void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override; // O DAW manda blocos de áudio para o plugin, e o 
+																			 // processBlock() é chamado para você processar esses blocos.
 
 	juce::AudioProcessorEditor* createEditor() override; // cria a interface gráfica do plugin
 	bool hasEditor() const override; // possui interface gráfica?
