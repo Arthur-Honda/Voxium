@@ -1,24 +1,27 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-AudioPluginAudioProcessor::AudioPluginAudioProcessor()
+VoxiumAudioProcessor::VoxiumAudioProcessor()
 	: AudioProcessor(BusesProperties()
 		#if ! JucePlugin_IsMidiEffect
 			#if ! JucePlugin_IsSynth
 				.withInput("Input", juce::AudioChannelSet::stereo(), true)
 			#endif
 				.withOutput("Output", juce::AudioChannelSet::stereo(), true)
-		#endif) {}
-
-	AudioPluginAudioProcessor::~AudioPluginAudioProcessor() {}
+		#endif
+	),
+	parameters(*this, nullptr, "PARAMETERS", {})
+{}
+	
+	VoxiumAudioProcessor::~VoxiumAudioProcessor() {}
 
 // ==============================================================================
 
-const juce::String AudioPluginAudioProcessor::getName() const {
+const juce::String VoxiumAudioProcessor::getName() const {
 	return JucePlugin_Name; // retorna o nome do plugin (Voxium)
 }
 
-bool AudioPluginAudioProcessor::acceptsMidi() const {
+bool VoxiumAudioProcessor::acceptsMidi() const {
 	#if JucePlugin_WantsMidiInput
 		return true;
 	#else
@@ -26,7 +29,7 @@ bool AudioPluginAudioProcessor::acceptsMidi() const {
 	#endif
 }
 
-bool AudioPluginAudioProcessor::producesMidi() const {
+bool VoxiumAudioProcessor::producesMidi() const {
 	#if JucePlugin_ProducesMidiOutput
 		return true;
 	#else
@@ -34,7 +37,7 @@ bool AudioPluginAudioProcessor::producesMidi() const {
 	#endif
 }
 
-bool AudioPluginAudioProcessor::isMidiEffect() const {
+bool VoxiumAudioProcessor::isMidiEffect() const {
 	#if JucePlugin_IsMidiEffect
 		return true;
 	#else
@@ -42,38 +45,38 @@ bool AudioPluginAudioProcessor::isMidiEffect() const {
 	#endif
 }
 
-double AudioPluginAudioProcessor::getTailLengthSeconds() const {
+double VoxiumAudioProcessor::getTailLengthSeconds() const {
 	return 0.0;
 }
 
-int AudioPluginAudioProcessor::getNumPrograms() {
+int VoxiumAudioProcessor::getNumPrograms() {
 	return 1;
 }
 
-int AudioPluginAudioProcessor::getCurrentProgram() {
+int VoxiumAudioProcessor::getCurrentProgram() {
 	return 0;
 }
 
-void AudioPluginAudioProcessor::setCurrentProgram(int index) { juce::ignoreUnused(index); }
+void VoxiumAudioProcessor::setCurrentProgram(int index) { juce::ignoreUnused(index); }
 
-const juce::String AudioPluginAudioProcessor::getProgramName(int index) {
+const juce::String VoxiumAudioProcessor::getProgramName(int index) {
 	juce::ignoreUnused(index);
 	return{};
 }
 
-void AudioPluginAudioProcessor::changeProgramName(int index, const juce::String& newName) {
+void VoxiumAudioProcessor::changeProgramName(int index, const juce::String& newName) {
 	juce::ignoreUnused(index, newName);
 }
 
 // ==============================================================================
 
-void AudioPluginAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
+void VoxiumAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
 	juce::ignoreUnused(sampleRate, samplesPerBlock);
 }
 
-void AudioPluginAudioProcessor::releaseResources() {} // liberar recursos que foram alocados/necessários durante o processamento.
+void VoxiumAudioProcessor::releaseResources() {} // liberar recursos que foram alocados/necessários durante o processamento.
 
-bool AudioPluginAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
+bool VoxiumAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
 	#if JucePlugin_IsMidiEffect 
 		juce::ignoreUnused(layouts);
 		return true;
@@ -91,7 +94,7 @@ bool AudioPluginAudioProcessor::isBusesLayoutSupported(const BusesLayout& layout
 	#endif
 }
 
-void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
+void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 											juce::MidiBuffer& midiMessages)
 {
 	juce::ignoreUnused(midiMessages);
@@ -111,24 +114,24 @@ void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
 // ==============================================================================
 
-bool AudioPluginAudioProcessor::hasEditor() const { return true; }
+bool VoxiumAudioProcessor::hasEditor() const { return true; }
 
-juce::AudioProcessorEditor* AudioPluginAudioProcessor::createEditor() {
-	return new AudioPluginAudioProcessorEditor (*this);
+juce::AudioProcessorEditor* VoxiumAudioProcessor::createEditor() {
+	return new VoxiumAudioProcessorEditor (*this);
 }
 
 // ==============================================================================
 
-void AudioPluginAudioProcessor::getStateInformation(juce::MemoryBlock& destData) {
+void VoxiumAudioProcessor::getStateInformation(juce::MemoryBlock& destData) {
 	juce::ignoreUnused(destData);
 }
 
-void AudioPluginAudioProcessor::setStateInformation(const void* data, int sizeInBytes) {
+void VoxiumAudioProcessor::setStateInformation(const void* data, int sizeInBytes) {
 	juce::ignoreUnused(data, sizeInBytes);
 }
 
 // ==============================================================================
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {
-	return new AudioPluginAudioProcessor();
+	return new VoxiumAudioProcessor();
 }
