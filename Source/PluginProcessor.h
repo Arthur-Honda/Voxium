@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include "DSP/PitchDetector.h"
+#include "DSP/NoteUtils.h"
 
 class VoxiumAudioProcessor : public juce::AudioProcessor // classe filho : classe pai
 {
@@ -37,7 +38,8 @@ public:
 	void setStateInformation(const void* data, int sizeInBytes) override; // serve para o estado do plugin.
 
 	float getCurrentPitch() const { return currentPitch.load(); }
-	float getCurrentLevel() const { return currentLevel.load(); } // tempo
+	float getCurrentLevel() const { return currentLevel.load(); } // DEBUGGING Purposes
+	NoteInfo getCurrentNote() const {return NoteUtils::frequencyToNote(currentPitch.load()); }
 
 private:
 	juce::AudioProcessorValueTreeState parameters;

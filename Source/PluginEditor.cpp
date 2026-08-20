@@ -36,12 +36,14 @@ void VoxiumAudioProcessorEditor::resized()
 //}
 
 
-void VoxiumAudioProcessorEditor::timerCallback()
-{
+void VoxiumAudioProcessorEditor::timerCallback() {
 	float freq = audioProcessor.getCurrentPitch();
 
-	if (freq > 0.0f)
-		pitchLabel.setText(juce::String(freq, 1) + " Hz", juce::dontSendNotification);
-	else
+	if (freq > 0.0f) {
+		NoteInfo note = audioProcessor.getCurrentNote();
+		pitchLabel.setText(juce::String(freq, 1) + " Hz  -  " + note.name, juce::dontSendNotification);
+	}
+	else {
 		pitchLabel.setText("Aguardando audio...", juce::dontSendNotification);
+	}
 }
