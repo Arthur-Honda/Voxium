@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "PitchDetector.h"
 
 class VoxiumAudioProcessor : public juce::AudioProcessor // classe filho : classe pai
 {
@@ -37,5 +38,9 @@ public:
 
 private:
 	juce::AudioProcessorValueTreeState parameters;
+
+	PitchDetector pitchDetector;
+	std::atomic<float> currentPitch{ 0.0f }; // variável atômica para armazenar a frequência detectada
+
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VoxiumAudioProcessor)
 };

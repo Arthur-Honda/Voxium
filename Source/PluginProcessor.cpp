@@ -71,7 +71,7 @@ void VoxiumAudioProcessor::changeProgramName(int index, const juce::String& newN
 // ==============================================================================
 
 void VoxiumAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
-	juce::ignoreUnused(sampleRate, samplesPerBlock);
+	pitchDetector.prepare(sampleRate, samplesPerBlock);
 }
 
 void VoxiumAudioProcessor::releaseResources() {} // liberar recursos que foram alocados/necessários durante o processamento.
@@ -109,6 +109,16 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 	for (int channel = 0; channel < totalNumInputChannels; ++channel) {
 		auto* channelData = buffer.getWritePointer(channel);
 		juce::ignoreUnused(channelData);
+	}
+
+	if (totalNumInputChannels > 0) {
+		auto* firstChannelData = buffer.getReadPointer(0);
+		float detectedFrequency = pitchDetector.detectPitch(firstChannelData);
+
+		if (detectedFrequency > 0.0f) {
+			currentPitch.store(detectedFrequency);
+		}
+
 	}
 }
 
