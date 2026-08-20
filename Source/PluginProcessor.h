@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 #include "DSP/PitchDetector.h"
 #include "DSP/NoteUtils.h"
+#include "DSP/Scaleutils.h"
 
 class VoxiumAudioProcessor : public juce::AudioProcessor // classe filho : classe pai
 {
@@ -41,6 +42,19 @@ public:
 	float getCurrentLevel() const { return currentLevel.load(); } // DEBUGGING Purposes
 	NoteInfo getCurrentNote() const {return NoteUtils::frequencyToNote(currentPitch.load()); }
 
+	void setSelectedKey(int newKeyRootNote) { selectedKeyRootNote = newKeyRootNote; }
+	void setSelectedScale(ScaleType newScaleType) { selectedScaleType = newScaleType; }
+
+	bool isCurrentNoteInScale() const
+	{
+		NoteInfo note = getCurrentNote();
+		if (note.midiNoteNumber < 0)
+			return false;
+
+		int noteClass = ((note.midiNoteNumber % 12) + 12) % 12;
+		return ScaleUtils::isNoteInScale(noteClass, selectedKeyRootNote, selectedScaleType);
+	}
+
 private:
 	juce::AudioProcessorValueTreeState parameters;
 
@@ -50,6 +64,9 @@ private:
 
 	static constexpr int pitchAnalysisSize = 2048; // janela de análise, independente do tamanho do bloco do driver
 	std::vector<float> pitchAnalysisBuffer;
+
+	int selectedKeyRootNote = 0; // 0 = C, por padrao
+	ScaleType selectedScaleType = ScaleType::Major; // Major, por padrao
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VoxiumAudioProcessor)
 };

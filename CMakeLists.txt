@@ -28,6 +28,8 @@ target_sources(Voxium
 		Source/DSP/PitchDetector.h
 		Source/DSP/NoteUtils.cpp 
 		Source/DSP/NoteUtils.h
+		Source/DSP/ScaleUtils.cpp
+		Source/DSP/ScaleUtils.h
 )
 
 juce_generate_juce_header(Voxium)
@@ -35,6 +37,7 @@ juce_generate_juce_header(Voxium)
 target_compile_definitions(Voxium
     PRIVATE
     JUCE_IGNORE_VST3_MISMATCHED_PARAMETER_ID_WARNING=1
+    JUCE_DIRECT2D=0
 )
 
 target_link_libraries(Voxium 

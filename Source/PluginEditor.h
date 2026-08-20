@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
+
 class VoxiumAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
@@ -17,6 +18,8 @@ private:
 
 	VoxiumAudioProcessor& audioProcessor;
 	juce::Label pitchLabel;
+	juce::ComboBox keyComboBox;
+	juce::ComboBox scaleComboBox;
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VoxiumAudioProcessorEditor)
 };
