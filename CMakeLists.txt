@@ -24,8 +24,8 @@ target_sources(Voxium
 		Source/PluginProcessor.h
 		Source/PluginEditor.cpp
 		Source/PluginEditor.h
-		Source/PitchDetector.cpp 
-		Source/PitchDetector.h
+		Source/DSP/PitchDetector.cpp 
+		Source/DSP/PitchDetector.h
 )
 
 juce_generate_juce_header(Voxium)

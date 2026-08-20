@@ -26,7 +26,7 @@ void VoxiumAudioProcessorEditor::resized()
 	pitchLabel.setBounds(getLocalBounds());
 }
 
-
+// USED FOR DEBUGGING PURPOSES
 //void VoxiumAudioProcessorEditor::timerCallback()
 //{
 //	float freq = audioProcessor.getCurrentPitch();

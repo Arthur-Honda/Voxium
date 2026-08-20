@@ -1,7 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
-#include "PitchDetector.h"
+#include "DSP/PitchDetector.h"
 
 class VoxiumAudioProcessor : public juce::AudioProcessor // classe filho : classe pai
 {
