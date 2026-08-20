@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <algorithm>
 
 VoxiumAudioProcessor::VoxiumAudioProcessor()
 	: AudioProcessor(BusesProperties()
@@ -71,7 +72,10 @@ void VoxiumAudioProcessor::changeProgramName(int index, const juce::String& newN
 // ==============================================================================
 
 void VoxiumAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
-	pitchDetector.prepare(sampleRate, samplesPerBlock);
+	juce::ignoreUnused(samplesPerBlock);
+
+	pitchDetector.prepare(sampleRate, pitchAnalysisSize);
+	pitchAnalysisBuffer.assign(pitchAnalysisSize, 0.0f);
 }
 
 void VoxiumAudioProcessor::releaseResources() {} // liberar recursos que foram alocados/necessários durante o processamento.
@@ -113,12 +117,29 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
 	if (totalNumInputChannels > 0) {
 		auto* firstChannelData = buffer.getReadPointer(0);
-		float detectedFrequency = pitchDetector.detectPitch(firstChannelData);
+		int numSamples = buffer.getNumSamples();
+
+		// debug: calcula o nível/volume do bloco que chegou, pra confirmar se tem audio de verdade
+		float sum = 0.0f;  //temp
+		for (int i = 0; i < numSamples; ++i)
+			sum += firstChannelData[i] * firstChannelData[i];
+		currentLevel.store(std::sqrt(sum / (float)numSamples)); 
+
+		if (numSamples >= pitchAnalysisSize) {
+			// bloco maior que a janela de análise (raro) -> usa só os samples mais recentes
+			std::copy(firstChannelData + numSamples - pitchAnalysisSize, firstChannelData + numSamples, pitchAnalysisBuffer.begin());
+		}
+		else {
+			// desloca os dados antigos pra esquerda e coloca os novos no final (janela deslizante)
+			std::copy(pitchAnalysisBuffer.begin() + numSamples, pitchAnalysisBuffer.end(), pitchAnalysisBuffer.begin());
+			std::copy(firstChannelData, firstChannelData + numSamples, pitchAnalysisBuffer.end() - numSamples);
+		}
+
+		float detectedFrequency = pitchDetector.detectPitch(pitchAnalysisBuffer.data());
 
 		if (detectedFrequency > 0.0f) {
 			currentPitch.store(detectedFrequency);
 		}
-
 	}
 }
 

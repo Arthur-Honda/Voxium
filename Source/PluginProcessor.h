@@ -36,11 +36,18 @@ public:
 	void getStateInformation(juce::MemoryBlock& destData) override;
 	void setStateInformation(const void* data, int sizeInBytes) override; // serve para o estado do plugin.
 
+	float getCurrentPitch() const { return currentPitch.load(); }
+	float getCurrentLevel() const { return currentLevel.load(); } // tempo
+
 private:
 	juce::AudioProcessorValueTreeState parameters;
 
 	PitchDetector pitchDetector;
 	std::atomic<float> currentPitch{ 0.0f }; // variável atômica para armazenar a frequência detectada
+	std::atomic<float> currentLevel{ 0.0f }; // tempo
+
+	static constexpr int pitchAnalysisSize = 2048; // janela de análise, independente do tamanho do bloco do driver
+	std::vector<float> pitchAnalysisBuffer;
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VoxiumAudioProcessor)
 };

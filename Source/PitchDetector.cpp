@@ -1,6 +1,7 @@
 #include "PitchDetector.h"
 #include <cmath>
 #include <limits>
+#include <algorithm>
 
 void PitchDetector::prepare(double newSampleRate, int newBufferSize) {
 	sampleRate = newSampleRate;
@@ -11,6 +12,18 @@ void PitchDetector::prepare(double newSampleRate, int newBufferSize) {
 }
 
 float PitchDetector::detectPitch(const float* audioData) {
+	// portão de silêncio: se o áudio tá muito baixo, nem tenta detectar
+	int yinBufferSize = (int)yinBuffer.size();
+	float energy = 0.0f;
+
+	for (int i = 0; i < yinBufferSize; ++i)
+		energy += audioData[i] * audioData[i];
+
+	energy /= (float)yinBufferSize;
+
+	if (energy < 0.00001f)
+		return 0.0f;
+
 	difference(audioData);
 	cumulativeMeanNormalizedDifference();
 
@@ -62,15 +75,36 @@ void PitchDetector::cumulativeMeanNormalizedDifference() {
 int PitchDetector::absoluteThreshold() {
 	int yinBufferSize = (int)yinBuffer.size();
 
-	for (int tau = 2; tau < yinBufferSize; ++tau) {
+	// so busca taus que correspondem a frequencias dentro da faixa vocal esperada
+	int minTau = (int)(sampleRate / maxFrequency);
+	int maxTau = (int)(sampleRate / minFrequency);
+
+	minTau = std::max(2, minTau);
+	maxTau = std::min(yinBufferSize - 1, maxTau);
+
+	for (int tau = minTau; tau <= maxTau; ++tau) {
 		if (yinBuffer[tau] < threshold) {
 			// desce até achar o mínimo local (mais preciso que só o primeiro ponto abaixo do threshold)
-			while (tau + 1 <yinBufferSize && yinBuffer[tau+1] < yinBuffer[tau])
+			while (tau + 1 <= maxTau && yinBuffer[tau + 1] < yinBuffer[tau])
 				++tau;
 
 			return tau;
 		}
 	}
+
+
+	// USE ABAIXO PARA DEBUGAR O YIN (mostra o tau e o valor do yinBuffer[tau] que passou do threshold)
+	// 
+	//for (int tau = 2; tau < yinBufferSize; ++tau) {
+	//	if (yinBuffer[tau] < threshold) {
+	//		// desce até achar o mínimo local (mais preciso que só o primeiro ponto abaixo do threshold)
+	//		while (tau + 1 < yinBufferSize && yinBuffer[tau + 1] < yinBuffer[tau])
+	//			++tau;
+
+	//		return tau;
+	//	}
+	//}
+	 
 	// Não achou nenhum período confiável -> provavelmente silêncio ou ruído sem pitch claro
 	return -1;
 }
@@ -92,5 +126,12 @@ float PitchDetector::parabolicInterpolation(int tauEstimate) {
 	float s1 = yinBuffer[tauEstimate];
 	float s2 = yinBuffer[x2];
 
-	return tauEstimate + (s2 - s0) / (2.0f * (2.0f * s1 - s2 - s0));
+	float denominator = 2.0f * (2.0f * s1 - s2 - s0);
+
+	// se o denominador for perto demais de zero, a interpolação fica instável
+	// (pode gerar valores absurdos) -> nesse caso, usa o tau original sem refinar
+	if (std::abs(denominator) < 1e-9f)
+		return (float)tauEstimate;
+
+	return tauEstimate + (s2 - s0) / denominator;
 }
