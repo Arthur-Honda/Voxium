@@ -20,6 +20,7 @@ private:
 	juce::Label pitchLabel;
 	juce::ComboBox keyComboBox;
 	juce::ComboBox scaleComboBox;
+	juce::ComboBox harmonyComboBox;
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VoxiumAudioProcessorEditor)
 };

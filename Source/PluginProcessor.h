@@ -46,9 +46,9 @@ public:
 
 	void setSelectedKey(int newKeyRootNote) { selectedKeyRootNote = newKeyRootNote; }
 	void setSelectedScale(ScaleType newScaleType) { selectedScaleType = newScaleType; }
+	void setHarmonyDegreeOffset(int newOffset) { harmonyDegreeOffset = newOffset; }
 
-	bool isCurrentNoteInScale() const
-	{
+	bool isCurrentNoteInScale() const {
 		NoteInfo note = getCurrentNote();
 		if (note.midiNoteNumber < 0)
 			return false;
@@ -57,15 +57,13 @@ public:
 		return ScaleUtils::isNoteInScale(noteClass, selectedKeyRootNote, selectedScaleType);
 	}
 
-	NoteInfo getHarmonyNote() const
-	{
+	NoteInfo getHarmonyNote() const {
 		NoteInfo original = getCurrentNote();
 		if (original.midiNoteNumber < 0)
 			return { "", -1, 0.0f };
 
-		int harmonyMidi = HarmonyUtils::getHarmonyNote(original.midiNoteNumber, selectedKeyRootNote, selectedScaleType, 2); // 2 = terca acima
+		int harmonyMidi = HarmonyUtils::getHarmonyNote(original.midiNoteNumber, selectedKeyRootNote, selectedScaleType, harmonyDegreeOffset);
 
-		// reaproveita o NoteUtils pra montar o nome da nota harmonica a partir do numero MIDI
 		float harmonyFrequency = 440.0f * std::pow(2.0f, (harmonyMidi - 69) / 12.0f);
 		return NoteUtils::frequencyToNote(harmonyFrequency);
 	}
@@ -82,6 +80,7 @@ private:
 
 	int selectedKeyRootNote = 0; // 0 = C, por padrao
 	ScaleType selectedScaleType = ScaleType::Major; // Major, por padrao
+	int harmonyDegreeOffset = 2; // 2 = terca acima, por padrao
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VoxiumAudioProcessor)
 };

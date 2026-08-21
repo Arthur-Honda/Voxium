@@ -1,10 +1,11 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <vector>
 
 VoxiumAudioProcessorEditor::VoxiumAudioProcessorEditor(VoxiumAudioProcessor& p)
 	: AudioProcessorEditor(&p), audioProcessor(p)
 {
-	setSize(400, 350);
+	setSize(400, 400);
 
 	pitchLabel.setText("Waiting for audio...", juce::dontSendNotification);
 	pitchLabel.setJustificationType(juce::Justification::centred);
@@ -35,6 +36,26 @@ VoxiumAudioProcessorEditor::VoxiumAudioProcessorEditor(VoxiumAudioProcessor& p)
 		};
 	addAndMakeVisible(scaleComboBox);
 
+	static const std::vector<std::pair<juce::String, int>> harmonyOptions = {
+		{ "3rd below", -2 },
+		{ "Unison",     0 },
+		{ "3rd above",  2 },
+		{ "5th above",  4 },
+		{ "Octave",     7 }
+	};
+
+	for (int i = 0; i < (int)harmonyOptions.size(); ++i)
+		harmonyComboBox.addItem(harmonyOptions[(size_t)i].first, i + 1);
+
+	harmonyComboBox.setSelectedId(3, juce::dontSendNotification); // "3rd above" por padrao
+	harmonyComboBox.onChange = [this]
+		{
+			static const std::vector<int> offsets = { -2, 0, 2, 4, 7 };
+			int selectedIndex = harmonyComboBox.getSelectedId() - 1;
+			audioProcessor.setHarmonyDegreeOffset(offsets[(size_t)selectedIndex]);
+		};
+	addAndMakeVisible(harmonyComboBox);
+
 	startTimerHz(15); // atualiza o texto 15 vezes por segundo
 }
 
@@ -45,12 +66,12 @@ void VoxiumAudioProcessorEditor::paint(juce::Graphics& g)
 	g.fillAll(getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId));
 }
 
-void VoxiumAudioProcessorEditor::resized()
-{
+void VoxiumAudioProcessorEditor::resized() {
 	auto area = getLocalBounds();
-	pitchLabel.setBounds(area.removeFromTop(200));
+	pitchLabel.setBounds(area.removeFromTop(150));
 	keyComboBox.setBounds(area.removeFromTop(40).reduced(20, 5));
 	scaleComboBox.setBounds(area.removeFromTop(40).reduced(20, 5));
+	harmonyComboBox.setBounds(area.removeFromTop(40).reduced(20, 5));
 }
 
 // USED FOR DEBUGGING PURPOSES
@@ -73,7 +94,7 @@ void VoxiumAudioProcessorEditor::timerCallback() {
 
 		juce::String text = juce::String(freq, 1) + " Hz  -  " + note.name;
 		text += inScale ? "  (In scale)" : "  (Out of scale)";
-		text += "\nHarmony (3rd): " + juce::String(harmony.name);
+		text += "\nHarmony: " + juce::String(harmony.name);
 
 		pitchLabel.setText(text, juce::dontSendNotification);
 	}
