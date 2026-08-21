@@ -68,10 +68,12 @@ void VoxiumAudioProcessorEditor::timerCallback() {
 
 	if (freq > 0.0f) {
 		NoteInfo note = audioProcessor.getCurrentNote();
+		NoteInfo harmony = audioProcessor.getHarmonyNote();
 		bool inScale = audioProcessor.isCurrentNoteInScale();
 
 		juce::String text = juce::String(freq, 1) + " Hz  -  " + note.name;
 		text += inScale ? "  (In scale)" : "  (Out of scale)";
+		text += "\nHarmony (3rd): " + juce::String(harmony.name);
 
 		pitchLabel.setText(text, juce::dontSendNotification);
 	}

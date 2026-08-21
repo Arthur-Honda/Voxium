@@ -1,9 +1,11 @@
 #pragma once
 
+#include <cmath>
 #include <JuceHeader.h>
 #include "DSP/PitchDetector.h"
 #include "DSP/NoteUtils.h"
-#include "DSP/Scaleutils.h"
+#include "DSP/ScaleUtils.h"
+#include "DSP/HarmonyUtils.h"
 
 class VoxiumAudioProcessor : public juce::AudioProcessor // classe filho : classe pai
 {
@@ -53,6 +55,19 @@ public:
 
 		int noteClass = ((note.midiNoteNumber % 12) + 12) % 12;
 		return ScaleUtils::isNoteInScale(noteClass, selectedKeyRootNote, selectedScaleType);
+	}
+
+	NoteInfo getHarmonyNote() const
+	{
+		NoteInfo original = getCurrentNote();
+		if (original.midiNoteNumber < 0)
+			return { "", -1, 0.0f };
+
+		int harmonyMidi = HarmonyUtils::getHarmonyNote(original.midiNoteNumber, selectedKeyRootNote, selectedScaleType, 2); // 2 = terca acima
+
+		// reaproveita o NoteUtils pra montar o nome da nota harmonica a partir do numero MIDI
+		float harmonyFrequency = 440.0f * std::pow(2.0f, (harmonyMidi - 69) / 12.0f);
+		return NoteUtils::frequencyToNote(harmonyFrequency);
 	}
 
 private:

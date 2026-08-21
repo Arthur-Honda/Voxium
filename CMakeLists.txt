@@ -30,6 +30,8 @@ target_sources(Voxium
 		Source/DSP/NoteUtils.h
 		Source/DSP/ScaleUtils.cpp
 		Source/DSP/ScaleUtils.h
+		Source/DSP/HarmonyUtils.cpp
+		Source/DSP/HarmonyUtils.h
 )
 
 juce_generate_juce_header(Voxium)
