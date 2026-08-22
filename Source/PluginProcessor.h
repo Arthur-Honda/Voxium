@@ -3,9 +3,9 @@
 #include <cmath>
 #include <JuceHeader.h>
 #include "DSP/PitchDetector.h"
-#include "DSP/NoteUtils.h"
-#include "DSP/ScaleUtils.h"
-#include "DSP/HarmonyUtils.h"
+#include "Theory/NoteUtils.h"
+#include "Theory/ScaleUtils.h"
+#include "Theory/HarmonyUtils.h"
 
 class VoxiumAudioProcessor : public juce::AudioProcessor // classe filho : classe pai
 {

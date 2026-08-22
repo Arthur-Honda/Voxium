@@ -26,12 +26,12 @@ target_sources(Voxium
 		Source/PluginEditor.h
 		Source/DSP/PitchDetector.cpp 
 		Source/DSP/PitchDetector.h
-		Source/DSP/NoteUtils.cpp 
-		Source/DSP/NoteUtils.h
-		Source/DSP/ScaleUtils.cpp
-		Source/DSP/ScaleUtils.h
-		Source/DSP/HarmonyUtils.cpp
-		Source/DSP/HarmonyUtils.h
+		Source/Theory/NoteUtils.cpp 
+		Source/Theory/NoteUtils.h
+		Source/Theory/ScaleUtils.cpp
+		Source/Theory/ScaleUtils.h
+		Source/Theory/HarmonyUtils.cpp
+		Source/Theory/HarmonyUtils.h
 )
 
 juce_generate_juce_header(Voxium)
