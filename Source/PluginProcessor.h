@@ -3,6 +3,7 @@
 #include <cmath>
 #include <JuceHeader.h>
 #include "DSP/PitchDetector.h"
+#include "DSP/PSOLAShifter.h"
 #include "Theory/NoteUtils.h"
 #include "Theory/ScaleUtils.h"
 #include "Theory/HarmonyUtils.h"
@@ -43,6 +44,7 @@ public:
 	float getCurrentPitch() const { return currentPitch.load(); }
 	float getCurrentLevel() const { return currentLevel.load(); } // DEBUGGING Purposes
 	NoteInfo getCurrentNote() const {return NoteUtils::frequencyToNote(currentPitch.load()); }
+	int getLastBlockSize() const { return lastBlockSize.load(); }
 
 	void setSelectedKey(int newKeyRootNote) { selectedKeyRootNote = newKeyRootNote; }
 	void setSelectedScale(ScaleType newScaleType) { selectedScaleType = newScaleType; }
@@ -73,7 +75,8 @@ private:
 
 	PitchDetector pitchDetector;
 	std::atomic<float> currentPitch{ 0.0f }; // variável atômica para armazenar a frequência detectada
-	std::atomic<float> currentLevel{ 0.0f }; // tempo
+	std::atomic<float> currentLevel{ 0.0f }; // DEBUGGING PURPOSES
+	std::atomic<int> lastBlockSize{ 0 };
 
 	static constexpr int pitchAnalysisSize = 2048; // janela de análise, independente do tamanho do bloco do driver
 	std::vector<float> pitchAnalysisBuffer;
@@ -81,6 +84,11 @@ private:
 	int selectedKeyRootNote = 0; // 0 = C, por padrao
 	ScaleType selectedScaleType = ScaleType::Major; // Major, por padrao
 	int harmonyDegreeOffset = 2; // 2 = terca acima, por padrao
+
+	PSOLAShifter psolaShifter;
+	std::vector<float> psolaOutputBuffer;
+	float smoothedPeriodInSamples = 0.0f;
+	int blocksSinceLastValidPitch = 0;
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VoxiumAudioProcessor)
 };

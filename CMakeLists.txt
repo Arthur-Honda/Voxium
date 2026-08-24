@@ -32,6 +32,8 @@ target_sources(Voxium
 		Source/Theory/ScaleUtils.h
 		Source/Theory/HarmonyUtils.cpp
 		Source/Theory/HarmonyUtils.h
+		Source/DSP/PSOLAShifter.cpp
+		Source/DSP/PSOLAShifter.h
 )
 
 juce_generate_juce_header(Voxium)

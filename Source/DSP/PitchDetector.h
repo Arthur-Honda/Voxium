@@ -16,9 +16,9 @@ public:
 private:
 	double sampleRate = 44100.0;
 	int bufferSize = 1024;
-	float threshold = 0.15f; // Threshold do YIN: quanto menor, mais "rigoroso" na detecção mas pode perder notas mais fracas/com ruido).
+	float threshold = 0.20f; // Threshold do YIN: quanto menor, mais "rigoroso" na detecção mas pode perder notas mais fracas/com ruido).
 
-	float minFrequency = 80.0f;   // Hz - grave (ex: voz masculina grave)
+	float minFrequency = 30.0f;   // Hz - grave (ex: voz masculina grave)
 	float maxFrequency = 1000.0f; // Hz - agudo (ex: falsete)
 
 	std::vector<float> yinBuffer;

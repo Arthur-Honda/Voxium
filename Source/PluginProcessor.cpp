@@ -76,6 +76,12 @@ void VoxiumAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
 	pitchDetector.prepare(sampleRate, pitchAnalysisSize);
 	pitchAnalysisBuffer.assign(pitchAnalysisSize, 0.0f);
+
+	// tamanho generoso, desacoplado do tamanho de bloco real do driver
+	// (mesmo raciocínio já aplicado no pitchAnalysisBuffer)
+	int maxPeriodForPsola = (int)(sampleRate / 70.0) + 16; // 80Hz = freq. mín. esperada
+	psolaShifter.prepare(8192, maxPeriodForPsola);
+	psolaOutputBuffer.assign(8192, 0.0f);
 }
 
 void VoxiumAudioProcessor::releaseResources() {} // liberar recursos que foram alocados/necessários durante o processamento.
@@ -99,8 +105,7 @@ bool VoxiumAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) co
 }
 
 void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
-											juce::MidiBuffer& midiMessages)
-{
+											juce::MidiBuffer& midiMessages) {
 	juce::ignoreUnused(midiMessages);
 
 	juce::ScopedNoDenormals noDenormals;
@@ -119,18 +124,12 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 		auto* firstChannelData = buffer.getReadPointer(0);
 		int numSamples = buffer.getNumSamples();
 
-		// debug: calcula o nível/volume do bloco que chegou, pra confirmar se tem audio de verdade
-		float sum = 0.0f;  //temp
-		for (int i = 0; i < numSamples; ++i)
-			sum += firstChannelData[i] * firstChannelData[i];
-		currentLevel.store(std::sqrt(sum / (float)numSamples)); 
+		lastBlockSize.store(numSamples);
 
 		if (numSamples >= pitchAnalysisSize) {
-			// bloco maior que a janela de análise (raro) -> usa só os samples mais recentes
 			std::copy(firstChannelData + numSamples - pitchAnalysisSize, firstChannelData + numSamples, pitchAnalysisBuffer.begin());
 		}
 		else {
-			// desloca os dados antigos pra esquerda e coloca os novos no final (janela deslizante)
 			std::copy(pitchAnalysisBuffer.begin() + numSamples, pitchAnalysisBuffer.end(), pitchAnalysisBuffer.begin());
 			std::copy(firstChannelData, firstChannelData + numSamples, pitchAnalysisBuffer.end() - numSamples);
 		}
@@ -139,6 +138,74 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
 		if (detectedFrequency > 0.0f) {
 			currentPitch.store(detectedFrequency);
+		}
+
+		// --- PSOLA: gera a voz de harmonia deslocada ---
+		float rawPeriodInSamples = (detectedFrequency > 0.0f) ? (float)(getSampleRate() / detectedFrequency) : 0.0f;
+
+		// quantos blocos de tolerancia antes de considerar "silencio de verdade"
+		// (aumentado bastante pra teste -- ~400ms)
+		int holdBlocks = (int)(0.4 * getSampleRate() / (double)numSamples) + 1;
+
+		if (rawPeriodInSamples > 0.0f)
+		{
+			const float smoothingAmount = 0.2f;
+			smoothedPeriodInSamples += (rawPeriodInSamples - smoothedPeriodInSamples) * smoothingAmount;
+			blocksSinceLastValidPitch = 0;
+		}
+		else
+		{
+			blocksSinceLastValidPitch++;
+
+			// deteccao falhou nesse bloco, mas ainda estamos dentro da "tolerancia" ->
+			// continua usando o ultimo periodo valido conhecido, ao inves de silenciar
+			if (blocksSinceLastValidPitch > holdBlocks)
+				smoothedPeriodInSamples = 0.0f; // silencio de verdade
+		}
+
+		float periodInSamples = smoothedPeriodInSamples;
+
+		// calcula o pitchRatio de verdade, baseado na harmonia escolhida
+		float pitchRatio = 1.0f;
+
+		if (periodInSamples > 0.0f) {
+			float smoothedFrequency = (float)(getSampleRate() / periodInSamples);
+			NoteInfo originalNote = NoteUtils::frequencyToNote(smoothedFrequency);
+
+			if (originalNote.midiNoteNumber >= 0) {
+				if (harmonyDegreeOffset == 0)
+				{
+					// Unison: sempre exatamente o pitch original, sem nenhum
+					// processamento de escala (evita que o "encaixe" na escala
+					// (snapToScale) oscile por causa de pequenas variacoes
+					// naturais da voz, o que causava uma modulacao rapida de
+					// pitch soando como ruido/whoosh)
+					pitchRatio = 1.0f;
+				}
+				else {
+					int harmonyMidiNote = HarmonyUtils::getHarmonyNote(
+						originalNote.midiNoteNumber, selectedKeyRootNote, selectedScaleType, harmonyDegreeOffset);
+
+					int semitoneDifference = harmonyMidiNote - originalNote.midiNoteNumber;
+					pitchRatio = std::pow(2.0f, (float)semitoneDifference / 12.0f);
+				}
+			}
+		}
+
+		if ((int)psolaOutputBuffer.size() < numSamples)
+			psolaOutputBuffer.assign((size_t)numSamples, 0.0f);
+
+		psolaShifter.process(pitchAnalysisBuffer.data(), pitchAnalysisSize, numSamples,
+			periodInSamples, pitchRatio, psolaOutputBuffer.data());
+
+		// substitui a saida pelo resultado do PSOLA (pra ouvir SO ele, sem o dry misturado)
+		// TESTE: reduzindo o volume pra confirmar se a distorcao e por causa de clipping
+		const float debugGainReduction = 0.5f;
+
+		for (int channel = 0; channel < totalNumOutputChannels; ++channel) {
+			auto* channelOut = buffer.getWritePointer(channel);
+			for (int i = 0; i < numSamples; ++i)
+				channelOut[i] = psolaOutputBuffer[(size_t)i] * debugGainReduction;
 		}
 	}
 }

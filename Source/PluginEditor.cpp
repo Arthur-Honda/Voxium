@@ -95,6 +95,7 @@ void VoxiumAudioProcessorEditor::timerCallback() {
 		juce::String text = juce::String(freq, 1) + " Hz  -  " + note.name;
 		text += inScale ? "  (In scale)" : "  (Out of scale)";
 		text += "\nHarmony: " + juce::String(harmony.name);
+		text += "\nBlock size: " + juce::String(audioProcessor.getLastBlockSize());
 
 		pitchLabel.setText(text, juce::dontSendNotification);
 	}
