@@ -49,6 +49,7 @@ target_sources(Voxium
 		Source/Theory/HarmonyUtils.cpp
 		Source/Theory/HarmonyUtils.h
 		Source/DSP/PitchShifter.h
+		Source/UI/VoxiumLookAndFeel.h
 		${rubberband_SOURCE_DIR}/single/RubberBandSingle.cpp
 )
 

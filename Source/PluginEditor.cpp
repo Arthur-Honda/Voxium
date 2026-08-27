@@ -5,18 +5,60 @@
 VoxiumAudioProcessorEditor::VoxiumAudioProcessorEditor(VoxiumAudioProcessor& p)
 	: AudioProcessorEditor(&p), audioProcessor(p)
 {
-	setSize(400, 400);
+	setLookAndFeel(&voxiumLookAndFeel);
+	setSize(420, 460);
 
-	pitchLabel.setText("Waiting for audio...", juce::dontSendNotification);
-	pitchLabel.setJustificationType(juce::Justification::centred);
-	pitchLabel.setFont(juce::Font(24.0f));
-	addAndMakeVisible(pitchLabel);
+	// --- Titulo ---
+	titleLabel.setText("VOXIUM", juce::dontSendNotification);
+	titleLabel.setFont(juce::Font(juce::FontOptions(15.0f)).withExtraKerningFactor(0.15f));
+	titleLabel.setColour(juce::Label::textColourId, VoxiumColours::textSecondary);
+	titleLabel.setJustificationType(juce::Justification::centredLeft);
+	addAndMakeVisible(titleLabel);
 
+	// --- Readout principal: nota detectada ---
+	noteLabel.setText("--", juce::dontSendNotification);
+	noteLabel.setFont(juce::Font(juce::FontOptions(56.0f)));
+	noteLabel.setColour(juce::Label::textColourId, VoxiumColours::textPrimary);
+	noteLabel.setJustificationType(juce::Justification::centred);
+	addAndMakeVisible(noteLabel);
+
+	frequencyLabel.setText("Waiting for audio...", juce::dontSendNotification);
+	frequencyLabel.setFont(juce::Font(juce::FontOptions(13.0f)));
+	frequencyLabel.setColour(juce::Label::textColourId, VoxiumColours::textSecondary);
+	frequencyLabel.setJustificationType(juce::Justification::centred);
+	addAndMakeVisible(frequencyLabel);
+
+	scaleStatusLabel.setText("", juce::dontSendNotification);
+	scaleStatusLabel.setFont(juce::Font(juce::FontOptions(12.0f)));
+	scaleStatusLabel.setJustificationType(juce::Justification::centred);
+	addAndMakeVisible(scaleStatusLabel);
+
+	harmonyLabel.setText("", juce::dontSendNotification);
+	harmonyLabel.setFont(juce::Font(juce::FontOptions(16.0f)));
+	harmonyLabel.setColour(juce::Label::textColourId, VoxiumColours::accent);
+	harmonyLabel.setJustificationType(juce::Justification::centred);
+	addAndMakeVisible(harmonyLabel);
+
+	// --- Legendas dos seletores ---
+	auto setupFieldLabel = [this](juce::Label& label, const juce::String& text)
+		{
+			label.setText(text, juce::dontSendNotification);
+			label.setFont(juce::Font(juce::FontOptions(11.0f)).withExtraKerningFactor(0.1f));
+			label.setColour(juce::Label::textColourId, VoxiumColours::textSecondary);
+			label.setJustificationType(juce::Justification::centredLeft);
+			addAndMakeVisible(label);
+		};
+
+	setupFieldLabel(keyFieldLabel, "KEY");
+	setupFieldLabel(scaleFieldLabel, "SCALE");
+	setupFieldLabel(harmonyFieldLabel, "HARMONY");
+
+	// --- ComboBoxes (mesma logica de antes, so o visual muda via LookAndFeel) ---
 	static const juce::StringArray keyNames{ "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
 	for (int i = 0; i < keyNames.size(); ++i)
-		keyComboBox.addItem(keyNames[i], i + 1); // JUCE ComboBox IDs comecam em 1, nao em 0
+		keyComboBox.addItem(keyNames[i], i + 1);
 
-	keyComboBox.setSelectedId(1, juce::dontSendNotification); // C por padrao
+	keyComboBox.setSelectedId(1, juce::dontSendNotification);
 	keyComboBox.onChange = [this]
 		{
 			audioProcessor.setSelectedKey(keyComboBox.getSelectedId() - 1);
@@ -29,7 +71,7 @@ VoxiumAudioProcessorEditor::VoxiumAudioProcessorEditor(VoxiumAudioProcessor& p)
 	for (int i = 0; i < scaleNames.size(); ++i)
 		scaleComboBox.addItem(scaleNames[i], i + 1);
 
-	scaleComboBox.setSelectedId(1, juce::dontSendNotification); // Major por padrao
+	scaleComboBox.setSelectedId(1, juce::dontSendNotification);
 	scaleComboBox.onChange = [this]
 		{
 			audioProcessor.setSelectedScale(static_cast<ScaleType>(scaleComboBox.getSelectedId() - 1));
@@ -47,7 +89,7 @@ VoxiumAudioProcessorEditor::VoxiumAudioProcessorEditor(VoxiumAudioProcessor& p)
 	for (int i = 0; i < (int)harmonyOptions.size(); ++i)
 		harmonyComboBox.addItem(harmonyOptions[(size_t)i].first, i + 1);
 
-	harmonyComboBox.setSelectedId(3, juce::dontSendNotification); // "3rd above" por padrao
+	harmonyComboBox.setSelectedId(3, juce::dontSendNotification);
 	harmonyComboBox.onChange = [this]
 		{
 			static const std::vector<int> offsets = { -2, 0, 2, 4, 7 };
@@ -56,50 +98,85 @@ VoxiumAudioProcessorEditor::VoxiumAudioProcessorEditor(VoxiumAudioProcessor& p)
 		};
 	addAndMakeVisible(harmonyComboBox);
 
-	startTimerHz(15); // atualiza o texto 15 vezes por segundo
+	startTimerHz(15);
 }
 
-VoxiumAudioProcessorEditor::~VoxiumAudioProcessorEditor() {}
+VoxiumAudioProcessorEditor::~VoxiumAudioProcessorEditor()
+{
+	setLookAndFeel(nullptr);
+}
 
 void VoxiumAudioProcessorEditor::paint(juce::Graphics& g)
 {
-	g.fillAll(getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId));
+	g.fillAll(VoxiumColours::background);
+
+	// pontinho accent do lado do titulo, um toque de identidade visual
+	auto titleBounds = titleLabel.getBounds();
+	g.setColour(VoxiumColours::accent);
+	g.fillEllipse((float)titleBounds.getRight() + 8.0f, (float)titleBounds.getCentreY() - 3.0f, 6.0f, 6.0f);
+
+	// linha divisoria sutil entre o readout e os seletores
+	g.setColour(VoxiumColours::border);
+	int dividerY = harmonyLabel.getBottom() + 20;
+	g.drawHorizontalLine(dividerY, 24.0f, (float)getWidth() - 24.0f);
 }
 
-void VoxiumAudioProcessorEditor::resized() {
-	auto area = getLocalBounds();
-	pitchLabel.setBounds(area.removeFromTop(150));
-	keyComboBox.setBounds(area.removeFromTop(40).reduced(20, 5));
-	scaleComboBox.setBounds(area.removeFromTop(40).reduced(20, 5));
-	harmonyComboBox.setBounds(area.removeFromTop(40).reduced(20, 5));
+void VoxiumAudioProcessorEditor::resized()
+{
+	auto area = getLocalBounds().reduced(24, 20);
+
+	titleLabel.setBounds(area.removeFromTop(20));
+
+	area.removeFromTop(20);
+
+	noteLabel.setBounds(area.removeFromTop(64));
+	frequencyLabel.setBounds(area.removeFromTop(20));
+	scaleStatusLabel.setBounds(area.removeFromTop(20));
+
+	area.removeFromTop(4);
+	harmonyLabel.setBounds(area.removeFromTop(24));
+
+	area.removeFromTop(28); // espaco pra linha divisoria desenhada no paint()
+
+	auto layoutField = [&area](juce::Label& fieldLabel, juce::ComboBox& box)
+		{
+			auto row = area.removeFromTop(56);
+			fieldLabel.setBounds(row.removeFromTop(16));
+			row.removeFromTop(4);
+			box.setBounds(row.removeFromTop(32));
+		};
+
+	layoutField(keyFieldLabel, keyComboBox);
+	area.removeFromTop(12);
+	layoutField(scaleFieldLabel, scaleComboBox);
+	area.removeFromTop(12);
+	layoutField(harmonyFieldLabel, harmonyComboBox);
 }
 
-// USED FOR DEBUGGING PURPOSES
-//void VoxiumAudioProcessorEditor::timerCallback()
-//{
-//	float freq = audioProcessor.getCurrentPitch();
-//	float level = audioProcessor.getCurrentLevel();
-//
-//	pitchLabel.setText("Pitch: " + juce::String(freq, 1) + " Hz | Level: " + juce::String(level, 5), juce::dontSendNotification);
-//}
-
-
-void VoxiumAudioProcessorEditor::timerCallback() {
+void VoxiumAudioProcessorEditor::timerCallback()
+{
 	float freq = audioProcessor.getCurrentPitch();
 
-	if (freq > 0.0f) {
+	if (freq > 0.0f)
+	{
 		NoteInfo note = audioProcessor.getCurrentNote();
 		NoteInfo harmony = audioProcessor.getHarmonyNote();
 		bool inScale = audioProcessor.isCurrentNoteInScale();
 
-		juce::String text = juce::String(freq, 1) + " Hz  -  " + note.name;
-		text += inScale ? "  (In scale)" : "  (Out of scale)";
-		text += "\nHarmony: " + juce::String(harmony.name);
-		text += "\nBlock size: " + juce::String(audioProcessor.getLastBlockSize());
+		noteLabel.setText(note.name, juce::dontSendNotification);
+		frequencyLabel.setText(juce::String(freq, 1) + " Hz", juce::dontSendNotification);
 
-		pitchLabel.setText(text, juce::dontSendNotification);
+		scaleStatusLabel.setText(inScale ? "IN SCALE" : "OUT OF SCALE", juce::dontSendNotification);
+		scaleStatusLabel.setColour(juce::Label::textColourId,
+			inScale ? VoxiumColours::accent : VoxiumColours::textSecondary);
+
+		harmonyLabel.setText(juce::String(juce::CharPointer_UTF8("\xe2\x86\x92 ")) + harmony.name, juce::dontSendNotification);
 	}
-	else {
-		pitchLabel.setText("Waiting for audio...", juce::dontSendNotification);
+	else
+	{
+		noteLabel.setText("--", juce::dontSendNotification);
+		frequencyLabel.setText("Waiting for audio...", juce::dontSendNotification);
+		scaleStatusLabel.setText("", juce::dontSendNotification);
+		harmonyLabel.setText("", juce::dontSendNotification);
 	}
 }
