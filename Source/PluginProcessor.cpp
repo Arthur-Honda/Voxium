@@ -4,17 +4,18 @@
 
 VoxiumAudioProcessor::VoxiumAudioProcessor()
 	: AudioProcessor(BusesProperties()
-		#if ! JucePlugin_IsMidiEffect
-			#if ! JucePlugin_IsSynth
-				.withInput("Input", juce::AudioChannelSet::stereo(), true)
-			#endif
-				.withOutput("Output", juce::AudioChannelSet::stereo(), true)
-		#endif
+#if ! JucePlugin_IsMidiEffect
+#if ! JucePlugin_IsSynth
+		.withInput("Input", juce::AudioChannelSet::stereo(), true)
+#endif
+		.withOutput("Output", juce::AudioChannelSet::stereo(), true)
+#endif
 	),
 	parameters(*this, nullptr, "PARAMETERS", {})
-{}
-	
-	VoxiumAudioProcessor::~VoxiumAudioProcessor() {}
+{
+}
+
+VoxiumAudioProcessor::~VoxiumAudioProcessor() {}
 
 // ==============================================================================
 
@@ -23,27 +24,27 @@ const juce::String VoxiumAudioProcessor::getName() const {
 }
 
 bool VoxiumAudioProcessor::acceptsMidi() const {
-	#if JucePlugin_WantsMidiInput
-		return true;
-	#else
-		return false;
-	#endif
+#if JucePlugin_WantsMidiInput
+	return true;
+#else
+	return false;
+#endif
 }
 
 bool VoxiumAudioProcessor::producesMidi() const {
-	#if JucePlugin_ProducesMidiOutput
-		return true;
-	#else
-		return false;
-	#endif
+#if JucePlugin_ProducesMidiOutput
+	return true;
+#else
+	return false;
+#endif
 }
 
 bool VoxiumAudioProcessor::isMidiEffect() const {
-	#if JucePlugin_IsMidiEffect
-		return true;
-	#else
-		return false;
-	#endif
+#if JucePlugin_IsMidiEffect
+	return true;
+#else
+	return false;
+#endif
 }
 
 double VoxiumAudioProcessor::getTailLengthSeconds() const {
@@ -72,40 +73,42 @@ void VoxiumAudioProcessor::changeProgramName(int index, const juce::String& newN
 // ==============================================================================
 
 void VoxiumAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
-	juce::ignoreUnused(samplesPerBlock);
-
 	pitchDetector.prepare(sampleRate, pitchAnalysisSize);
 	pitchAnalysisBuffer.assign(pitchAnalysisSize, 0.0f);
 
-	// tamanho generoso, desacoplado do tamanho de bloco real do driver
-	// (mesmo raciocínio já aplicado no pitchAnalysisBuffer)
-	int maxPeriodForPsola = (int)(sampleRate / 70.0) + 16; // 80Hz = freq. mín. esperada
-	psolaShifter.prepare(8192, maxPeriodForPsola);
-	psolaOutputBuffer.assign(8192, 0.0f);
+	// samplesPerBlock aqui e so um "tamanho tipico" que o host informa antecipadamente;
+	// o numSamples real de cada processBlock() pode variar, por isso o PitchShifter
+	// usa FIFOs internas (ver PitchShifter.h) -- mas passamos esse valor pra ele
+	// dimensionar as FIFOs com folga suficiente.
+	pitchShifter.prepare(sampleRate, samplesPerBlock);
+	shifterOutputBuffer.assign((size_t)samplesPerBlock, 0.0f);
+
+	smoothedPeriodInSamples = 0.0f;
+	blocksSinceLastValidPitch = 0;
 }
 
 void VoxiumAudioProcessor::releaseResources() {} // liberar recursos que foram alocados/necessários durante o processamento.
 
 bool VoxiumAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
-	#if JucePlugin_IsMidiEffect 
-		juce::ignoreUnused(layouts);
-		return true;
-	#else
+#if JucePlugin_IsMidiEffect 
+	juce::ignoreUnused(layouts);
+	return true;
+#else
 	if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
 		&& layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
 		return false;
 
-	#if ! JucePlugin_IsSynth
+#if ! JucePlugin_IsSynth
 	if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
 		return false;
-	#endif
+#endif
 
-		return true;
-	#endif
+	return true;
+#endif
 }
 
 void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
-											juce::MidiBuffer& midiMessages) {
+	juce::MidiBuffer& midiMessages) {
 	juce::ignoreUnused(midiMessages);
 
 	juce::ScopedNoDenormals noDenormals;
@@ -113,12 +116,7 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 	auto totalNumOutputChannels = getTotalNumOutputChannels();
 
 	for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
-		buffer.clear(i, 0, buffer.getNumSamples());	
-
-	for (int channel = 0; channel < totalNumInputChannels; ++channel) {
-		auto* channelData = buffer.getWritePointer(channel);
-		juce::ignoreUnused(channelData);
-	}
+		buffer.clear(i, 0, buffer.getNumSamples());
 
 	if (totalNumInputChannels > 0) {
 		auto* firstChannelData = buffer.getReadPointer(0);
@@ -126,6 +124,7 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
 		lastBlockSize.store(numSamples);
 
+		// --- Deteccao de pitch (janela deslizante de 2048 samples, igual antes) ---
 		if (numSamples >= pitchAnalysisSize) {
 			std::copy(firstChannelData + numSamples - pitchAnalysisSize, firstChannelData + numSamples, pitchAnalysisBuffer.begin());
 		}
@@ -140,11 +139,10 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 			currentPitch.store(detectedFrequency);
 		}
 
-		// --- PSOLA: gera a voz de harmonia deslocada ---
+		// --- Suavizacao do periodo detectado (igual a logica antiga do PSOLA) ---
 		float rawPeriodInSamples = (detectedFrequency > 0.0f) ? (float)(getSampleRate() / detectedFrequency) : 0.0f;
 
-		// quantos blocos de tolerancia antes de considerar "silencio de verdade"
-		// (aumentado bastante pra teste -- ~400ms)
+		// quantos blocos de tolerancia antes de considerar "silencio de verdade" (~400ms)
 		int holdBlocks = (int)(0.4 * getSampleRate() / (double)numSamples) + 1;
 
 		if (rawPeriodInSamples > 0.0f)
@@ -157,15 +155,13 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 		{
 			blocksSinceLastValidPitch++;
 
-			// deteccao falhou nesse bloco, mas ainda estamos dentro da "tolerancia" ->
-			// continua usando o ultimo periodo valido conhecido, ao inves de silenciar
 			if (blocksSinceLastValidPitch > holdBlocks)
 				smoothedPeriodInSamples = 0.0f; // silencio de verdade
 		}
 
 		float periodInSamples = smoothedPeriodInSamples;
 
-		// calcula o pitchRatio de verdade, baseado na harmonia escolhida
+		// --- Calcula o pitchRatio de verdade, baseado na harmonia escolhida ---
 		float pitchRatio = 1.0f;
 
 		if (periodInSamples > 0.0f) {
@@ -175,11 +171,8 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 			if (originalNote.midiNoteNumber >= 0) {
 				if (harmonyDegreeOffset == 0)
 				{
-					// Unison: sempre exatamente o pitch original, sem nenhum
-					// processamento de escala (evita que o "encaixe" na escala
-					// (snapToScale) oscile por causa de pequenas variacoes
-					// naturais da voz, o que causava uma modulacao rapida de
-					// pitch soando como ruido/whoosh)
+					// Unison: sempre exatamente o pitch original, sem "snap" de escala
+					// (evita modulacao rapida de pitch por pequenas variacoes vocais)
 					pitchRatio = 1.0f;
 				}
 				else {
@@ -192,20 +185,22 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 			}
 		}
 
-		if ((int)psolaOutputBuffer.size() < numSamples)
-			psolaOutputBuffer.assign((size_t)numSamples, 0.0f);
+		// --- Pitch shifting de verdade, via RubberBand (PitchShifter) ---
+		if ((int)shifterOutputBuffer.size() < numSamples)
+			shifterOutputBuffer.assign((size_t)numSamples, 0.0f);
 
-		psolaShifter.process(pitchAnalysisBuffer.data(), pitchAnalysisSize, numSamples,
-			periodInSamples, pitchRatio, psolaOutputBuffer.data());
+		pitchShifter.setPitchRatio(pitchRatio);
 
-		// substitui a saida pelo resultado do PSOLA (pra ouvir SO ele, sem o dry misturado)
-		// TESTE: reduzindo o volume pra confirmar se a distorcao e por causa de clipping
-		const float debugGainReduction = 0.5f;
+		// IMPORTANTE: alimenta o shifter com o audio "cru" real (firstChannelData),
+		// NAO com o pitchAnalysisBuffer -- o RubberBandLiveShifter espera um fluxo
+		// continuo e cronologico, diferente do buffer de analise deslizante usado
+		// so pra deteccao de pitch (ver comentario em PitchShifter.h).
+		pitchShifter.process(firstChannelData, shifterOutputBuffer.data(), numSamples);
 
 		for (int channel = 0; channel < totalNumOutputChannels; ++channel) {
 			auto* channelOut = buffer.getWritePointer(channel);
 			for (int i = 0; i < numSamples; ++i)
-				channelOut[i] = psolaOutputBuffer[(size_t)i] * debugGainReduction;
+				channelOut[i] = shifterOutputBuffer[(size_t)i];
 		}
 	}
 }
@@ -215,7 +210,7 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 bool VoxiumAudioProcessor::hasEditor() const { return true; }
 
 juce::AudioProcessorEditor* VoxiumAudioProcessor::createEditor() {
-	return new VoxiumAudioProcessorEditor (*this);
+	return new VoxiumAudioProcessorEditor(*this);
 }
 
 // ==============================================================================

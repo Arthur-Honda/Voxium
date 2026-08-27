@@ -3,7 +3,7 @@
 #include <cmath>
 #include <JuceHeader.h>
 #include "DSP/PitchDetector.h"
-#include "DSP/PSOLAShifter.h"
+#include "DSP/PitchShifter.h"
 #include "Theory/NoteUtils.h"
 #include "Theory/ScaleUtils.h"
 #include "Theory/HarmonyUtils.h"
@@ -20,7 +20,7 @@ public:
 	bool isBusesLayoutSupported(const BusesLayout& layouts) const override; // aceita canal de áudio mono/stereo
 
 	void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override; // O DAW manda blocos de áudio para o plugin, e o 
-																			 // processBlock() é chamado para você processar esses blocos.
+	// processBlock() é chamado para você processar esses blocos.
 
 	juce::AudioProcessorEditor* createEditor() override; // cria a interface gráfica do plugin
 	bool hasEditor() const override; // possui interface gráfica?
@@ -43,7 +43,7 @@ public:
 
 	float getCurrentPitch() const { return currentPitch.load(); }
 	float getCurrentLevel() const { return currentLevel.load(); } // DEBUGGING Purposes
-	NoteInfo getCurrentNote() const {return NoteUtils::frequencyToNote(currentPitch.load()); }
+	NoteInfo getCurrentNote() const { return NoteUtils::frequencyToNote(currentPitch.load()); }
 	int getLastBlockSize() const { return lastBlockSize.load(); }
 
 	void setSelectedKey(int newKeyRootNote) { selectedKeyRootNote = newKeyRootNote; }
@@ -85,8 +85,8 @@ private:
 	ScaleType selectedScaleType = ScaleType::Major; // Major, por padrao
 	int harmonyDegreeOffset = 2; // 2 = terca acima, por padrao
 
-	PSOLAShifter psolaShifter;
-	std::vector<float> psolaOutputBuffer;
+	PitchShifter pitchShifter;
+	std::vector<float> shifterOutputBuffer;
 	float smoothedPeriodInSamples = 0.0f;
 	int blocksSinceLastValidPitch = 0;
 
