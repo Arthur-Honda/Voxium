@@ -1,134 +1,129 @@
 #pragma once
 
-#include <rubberband/RubberBandLiveShifter.h>
-// O caminho correto e resolvido automaticamente pelo CMake via target_link_libraries(rubberband).
+#include <rubberband/RubberBandStretcher.h>
 #include <vector>
 #include <memory>
 #include <algorithm>
 
-// Substitui o PSOLAShifter. Usa o RubberBandLiveShifter (API dedicada a
-// pitch-shifting em tempo real, mais simples e com menos latencia que o
-// RubberBandStretcher "geral") pra deslocar o pitch da voz captada.
+// Substitui o PSOLAShifter. Usa o RubberBandStretcher completo (nao o
+// RubberBandLiveShifter) em modo streaming/tempo-real, com as opcoes de
+// qualidade recomendadas pela propria documentacao do Rubber Band pra voz
+// com pitch mudando dinamicamente:
 //
-// Diferenca importante em relacao ao PSOLAShifter antigo: o PSOLA extraia
-// "graos" de um buffer de analise deslizante (pitchAnalysisBuffer, 2048
-// samples). O RubberBandLiveShifter NAO funciona assim -- ele espera
-// receber o audio real, em sequencia cronologica continua, exatamente como
-// chega do driver. Por isso o PluginProcessor deve alimentar esse shifter
-// com o bloco de audio "cru" (buffer.getReadPointer(0), numSamples), e NAO
-// com o pitchAnalysisBuffer (que e so pra deteccao de pitch).
+//   OptionProcessRealTime | OptionEngineFiner | OptionWindowShort |
+//   OptionFormantPreserved | OptionPitchHighConsistency
 //
-// Complicacao a resolver: o RubberBandLiveShifter::shift() exige um numero
-// FIXO de samples por chamada (getBlockSize()), que normalmente NAO bate
-// com o numSamples que o host/DAW manda a cada processBlock() (esse pode
-// variar bloco a bloco). Por isso essa classe mantem duas FIFOs internas:
-// uma de entrada (acumula ate ter samples suficientes pra chamar shift())
-// e uma de saida (acumula o que o shift() devolve, ate ter o suficiente
-// pra entregar exatamente numSamples de volta pro processBlock).
+// Trade-off consciente: essa combinacao tem mais LATENCIA que o
+// RubberBandLiveShifter (que e otimizado pra latencia minima, mas soa
+// mais artificial/menos humano em voz). Como o Voxium roda dentro de uma
+// DAW (nao monitoramento ao vivo no palco), a latencia extra e reportada
+// via getLatencySamples() e a DAW compensa automaticamente (PDC).
+//
+// Diferenca de uso em relacao ao LiveShifter: o RubberBandStretcher aceita
+// blocos de tamanho VARIAVEL em process() (nao exige um bloco fixo como o
+// LiveShifter), entao nao precisamos de FIFO de entrada -- so uma FIFO de
+// saida, porque o numero de samples disponiveis via available()/retrieve()
+// nao necessariamente bate com o numSamples que o host pediu naquele bloco.
 class PitchShifter
 {
 public:
 	PitchShifter() = default;
 
-	// sampleRate: sample rate atual do host
-	// maxHostBlockSize: o maior numSamples que o processBlock() pode receber
-	//                    (JUCE fornece isso em prepareToPlay)
 	void prepare(double sampleRate, int maxHostBlockSize)
 	{
 		using namespace RubberBand;
 
-		// Um canal (mono): Voxium trata a voz captada como uma unica fonte
-		// mono, igual o PSOLAShifter fazia.
-		shifter = std::make_unique<RubberBandLiveShifter>(
-			(size_t)sampleRate,
-			(size_t)1,
-			RubberBandLiveShifter::OptionFormantPreserved);
-		// OptionFormantPreserved: mantem o timbre/formantes da voz original
-		// ao inves de deixar o pitch shift "esticar" o timbre tambem (o que
-		// soa tipo "Chewbacca"/esquilo em desvios grandes de pitch -- o
-		// mesmo tipo de artefato que o PSOLA proprio sofria).
+		auto options = RubberBandStretcher::OptionProcessRealTime
+			| RubberBandStretcher::OptionEngineFiner
+			| RubberBandStretcher::OptionWindowShort
+			| RubberBandStretcher::OptionFormantPreserved
+			| RubberBandStretcher::OptionPitchHighConsistency;
 
-		rbBlockSize = (int)shifter->getBlockSize();
+		// canal unico (mono), timeRatio sempre 1.0 (nunca estica tempo,
+		// so muda pitch), pitchScale inicial 1.0 (sem harmonia ainda)
+		stretcher = std::make_unique<RubberBandStretcher>(
+			(size_t)sampleRate, (size_t)1, options, 1.0, 1.0);
 
-		// FIFOs com folga suficiente pra nunca estourar entre chamadas
-		int fifoCapacity = rbBlockSize + maxHostBlockSize + 64;
-		inputFifo.assign((size_t)fifoCapacity, 0.0f);
+		stretcher->setMaxProcessSize((size_t)maxHostBlockSize);
+
+		latencySamples = (int)stretcher->getLatency();
+
+		// FIFO de saida com folga generosa: precisa caber a latencia
+		// interna do stretcher, mais margem pra picos de "available()"
+		int fifoCapacity = (maxHostBlockSize * 4) + latencySamples + 256;
 		outputFifo.assign((size_t)fifoCapacity, 0.0f);
-		inputFifoFill = 0;
 		outputFifoFill = 0;
 
-		rbInputScratch.assign((size_t)rbBlockSize, 0.0f);
-		rbOutputScratch.assign((size_t)rbBlockSize, 0.0f);
+		retrieveScratch.assign((size_t)(maxHostBlockSize * 2 + 256), 0.0f);
 
 		currentPitchRatio = 1.0f;
 	}
 
-	// zera todo o estado interno (usar ao trocar de configuracao ou parar/comecar a tocar)
+	// latencia introduzida pelo shifter, em samples -- reportar isso ao
+	// host via AudioProcessor::setLatencySamples() pra ativar o PDC da DAW
+	int getLatencySamples() const { return latencySamples; }
+
 	void reset()
 	{
-		if (shifter != nullptr)
-			shifter->reset();
+		if (stretcher != nullptr)
+			stretcher->reset();
 
-		std::fill(inputFifo.begin(), inputFifo.end(), 0.0f);
 		std::fill(outputFifo.begin(), outputFifo.end(), 0.0f);
-		inputFifoFill = 0;
 		outputFifoFill = 0;
 	}
 
-	// fator de multiplicacao da frequencia (1.0 = sem mudanca, 2.0 = uma
-	// oitava acima, etc) -- pode ser chamado a cada bloco, o RubberBand
-	// aceita mudanca de pitch em tempo real sem reiniciar o processamento
 	void setPitchRatio(float ratio)
 	{
-		if (shifter == nullptr)
+		if (stretcher == nullptr)
 			return;
 
 		if (ratio != currentPitchRatio)
 		{
-			shifter->setPitchScale((double)ratio);
+			stretcher->setPitchScale((double)ratio);
 			currentPitchRatio = ratio;
 		}
 	}
 
-	// input: audio mono "cru", em sequencia cronologica real (ex: buffer.getReadPointer(0))
-	// output: buffer de saida, precisa ter pelo menos numSamples de tamanho
-	// numSamples: numero de samples desse bloco (o numSamples do processBlock do host)
 	void process(const float* input, float* output, int numSamples)
 	{
-		if (shifter == nullptr)
+		if (stretcher == nullptr)
 		{
 			std::fill(output, output + numSamples, 0.0f);
 			return;
 		}
 
-		// 1) acumula a entrada nova na FIFO de entrada
-		std::copy(input, input + numSamples, inputFifo.begin() + inputFifoFill);
-		inputFifoFill += numSamples;
+		const float* inPtrs[1] = { input };
+		stretcher->process(inPtrs, (size_t)numSamples, false);
 
-		// 2) processa quantos blocos FIXOS de rbBlockSize couberem no que foi acumulado
-		while (inputFifoFill >= rbBlockSize)
+		// esvazia tudo que o stretcher tiver pronto pra essa altura, e
+		// acumula na FIFO de saida (pode ser mais ou menos que numSamples)
+		int available = (int)stretcher->available();
+		while (available > 0)
 		{
-			std::copy(inputFifo.begin(), inputFifo.begin() + rbBlockSize, rbInputScratch.begin());
+			int toRetrieve = std::min(available, (int)retrieveScratch.size());
+			float* outPtrs[1] = { retrieveScratch.data() };
+			int retrieved = (int)stretcher->retrieve(outPtrs, (size_t)toRetrieve);
 
-			const float* inPtrs[1] = { rbInputScratch.data() };
-			float* outPtrs[1] = { rbOutputScratch.data() };
-			shifter->shift(inPtrs, outPtrs);
+			if (retrieved <= 0)
+				break;
 
-			std::copy(rbOutputScratch.begin(), rbOutputScratch.end(), outputFifo.begin() + outputFifoFill);
-			outputFifoFill += rbBlockSize;
+			int spaceLeft = (int)outputFifo.size() - outputFifoFill;
+			if (retrieved > spaceLeft)
+				retrieved = spaceLeft; // seguranca contra overflow (nao deveria acontecer com o fifoCapacity calculado)
 
-			// descarta da FIFO de entrada o que acabou de ser consumido
-			std::copy(inputFifo.begin() + rbBlockSize, inputFifo.begin() + inputFifoFill, inputFifo.begin());
-			inputFifoFill -= rbBlockSize;
+			if (retrieved <= 0)
+				break;
+
+			std::copy(retrieveScratch.begin(), retrieveScratch.begin() + retrieved, outputFifo.begin() + outputFifoFill);
+			outputFifoFill += retrieved;
+
+			available = (int)stretcher->available();
 		}
 
-		// 3) entrega exatamente numSamples de saida.
-		//    Nos primeiros blocos (antes do "priming" inicial do shifter),
-		//    pode nao ter ainda numSamples acumulados -- nesse caso completa
-		//    com silencio (é uma latencia de poucos blocos, inaudivel na pratica).
-		int available = outputFifoFill;
-		int toCopy = std::min(available, numSamples);
-
+		// entrega exatamente numSamples de saida (silencio se ainda nao
+		// tiver o suficiente -- so acontece durante o "priming" inicial,
+		// equivalente a latencia reportada por getLatencySamples())
+		int toCopy = std::min(outputFifoFill, numSamples);
 		std::copy(outputFifo.begin(), outputFifo.begin() + toCopy, output);
 		if (toCopy < numSamples)
 			std::fill(output + toCopy, output + numSamples, 0.0f);
@@ -138,17 +133,13 @@ public:
 	}
 
 private:
-	std::unique_ptr<RubberBand::RubberBandLiveShifter> shifter;
-	int rbBlockSize = 0;
-
-	std::vector<float> inputFifo;
-	int inputFifoFill = 0;
+	std::unique_ptr<RubberBand::RubberBandStretcher> stretcher;
+	int latencySamples = 0;
 
 	std::vector<float> outputFifo;
 	int outputFifoFill = 0;
 
-	std::vector<float> rbInputScratch;
-	std::vector<float> rbOutputScratch;
+	std::vector<float> retrieveScratch;
 
 	float currentPitchRatio = 1.0f;
 };

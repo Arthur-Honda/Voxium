@@ -88,6 +88,7 @@ private:
 	PitchShifter pitchShifter;
 	std::vector<float> shifterOutputBuffer;
 	float smoothedPeriodInSamples = 0.0f;
+	float smoothedPitchRatio = 1.0f;
 	int blocksSinceLastValidPitch = 0;
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VoxiumAudioProcessor)

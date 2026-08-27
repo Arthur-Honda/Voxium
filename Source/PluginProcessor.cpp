@@ -83,7 +83,13 @@ void VoxiumAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 	pitchShifter.prepare(sampleRate, samplesPerBlock);
 	shifterOutputBuffer.assign((size_t)samplesPerBlock, 0.0f);
 
+	// avisa a DAW da latencia introduzida pelo RubberBandStretcher, pra
+	// ela compensar automaticamente (PDC) -- sem isso a harmonia ficaria
+	// visivelmente atrasada em relacao a outras tracks/plugins
+	setLatencySamples(pitchShifter.getLatencySamples());
+
 	smoothedPeriodInSamples = 0.0f;
+	smoothedPitchRatio = 1.0f;
 	blocksSinceLastValidPitch = 0;
 }
 
@@ -145,10 +151,24 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 		// quantos blocos de tolerancia antes de considerar "silencio de verdade" (~400ms)
 		int holdBlocks = (int)(0.4 * getSampleRate() / (double)numSamples) + 1;
 
+		bool wasSilent = (smoothedPeriodInSamples <= 0.0f);
+
 		if (rawPeriodInSamples > 0.0f)
 		{
-			const float smoothingAmount = 0.2f;
-			smoothedPeriodInSamples += (rawPeriodInSamples - smoothedPeriodInSamples) * smoothingAmount;
+			if (wasSilent)
+			{
+				// Saindo do silencio pra uma nota nova: nao tem "nota anterior"
+				// pra fazer transicao suave, entao aplica direto -- suavizar
+				// aqui so adicionaria atraso perceptivel no ataque da nota
+				// (alem do atraso inevitavel da propria deteccao YIN).
+				smoothedPeriodInSamples = rawPeriodInSamples;
+			}
+			else
+			{
+				const float smoothingAmount = 0.2f;
+				smoothedPeriodInSamples += (rawPeriodInSamples - smoothedPeriodInSamples) * smoothingAmount;
+			}
+
 			blocksSinceLastValidPitch = 0;
 		}
 		else
@@ -167,6 +187,7 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 		if (periodInSamples > 0.0f) {
 			float smoothedFrequency = (float)(getSampleRate() / periodInSamples);
 			NoteInfo originalNote = NoteUtils::frequencyToNote(smoothedFrequency);
+
 
 			if (originalNote.midiNoteNumber >= 0) {
 				if (harmonyDegreeOffset == 0)
@@ -189,7 +210,32 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 		if ((int)shifterOutputBuffer.size() < numSamples)
 			shifterOutputBuffer.assign((size_t)numSamples, 0.0f);
 
-		pitchShifter.setPitchRatio(pitchRatio);
+		// IMPORTANTE: suaviza o pitchRatio antes de mandar pro shifter --
+		// mas RAPIDO, e SO em transicoes nota-a-nota. O objetivo aqui e
+		// evitar uma descontinuidade de UMA amostra (que soa como
+		// "zap"/clique) quando voce ja estava cantando uma nota e muda pra
+		// outra, NAO criar um portamento audivel nem atrasar o ataque de
+		// uma nota nova saindo do silencio (isso so adicionaria atraso
+		// perceptivel logo no inicio de cada frase cantada).
+		// Um fator baixo (ex: 0.15) cria uma rampa longa demais (100-250ms)
+		// que, em saltos GRANDES de harmonia (ex: mais de uma oitava),
+		// fica audivel como um glissando passando por notas que nao fazem
+		// parte da harmonia real -- soa como "mistura de notas". Um fator
+		// alto (ex: 0.6-0.8) resolve os dois problemas: rapido o
+		// suficiente pra nao soar como slide, mas ainda suaviza a
+		// transicao de amostra a amostra o bastante pra tirar o clique.
+		if (wasSilent && rawPeriodInSamples > 0.0f)
+		{
+			// ataque de nota nova: aplica o pitchRatio na hora, sem suavizar
+			smoothedPitchRatio = pitchRatio;
+		}
+		else
+		{
+			const float ratioSmoothingAmount = 0.67f;
+			smoothedPitchRatio += (pitchRatio - smoothedPitchRatio) * ratioSmoothingAmount;
+		}
+
+		pitchShifter.setPitchRatio(smoothedPitchRatio);
 
 		// IMPORTANTE: alimenta o shifter com o audio "cru" real (firstChannelData),
 		// NAO com o pitchAnalysisBuffer -- o RubberBandLiveShifter espera um fluxo
