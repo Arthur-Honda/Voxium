@@ -28,7 +28,7 @@ float PitchDetector::detectPitch(const float* audioData) {
 	cumulativeMeanNormalizedDifference();
 
 	int tauEstimate = absoluteThreshold(); // não achou um período válido -> não tem pitch confiável nesse bloco.
-	if (tauEstimate == -1) 
+	if (tauEstimate == -1)
 		return 0.0f;
 
 	float betterTau = parabolicInterpolation(tauEstimate);
@@ -56,12 +56,12 @@ void PitchDetector::difference(const float* audioData) {
 
 // Normaliza a função de diferença (CMND - Cumulative Mean Normalized Difference)
 void PitchDetector::cumulativeMeanNormalizedDifference() {
-	int yinBufferSize = (int) yinBuffer.size();
-	
-	yinBuffer[0] = 1.0f; 
+	int yinBufferSize = (int)yinBuffer.size();
+
+	yinBuffer[0] = 1.0f;
 	float runningSum = 0.0f;
 
-	for (int tau = 1; tau < yinBufferSize; ++tau){
+	for (int tau = 1; tau < yinBufferSize; ++tau) {
 		runningSum += yinBuffer[tau];
 
 		if (runningSum == 0.0f)
@@ -88,6 +88,35 @@ int PitchDetector::absoluteThreshold() {
 			while (tau + 1 <= maxTau && yinBuffer[tau + 1] < yinBuffer[tau])
 				++tau;
 
+			// --- Correcao de erro de oitava (octave error) ---
+			// A busca acima vai do tau MENOR (frequencia mais aguda) pro
+			// MAIOR (mais grave), e para no primeiro que passa no threshold.
+			// Isso e o comportamento certo pra evitar o erro classico de
+			// "oitava PRA BAIXO" -- mas deixa a porta aberta pro erro
+			// oposto: se o segundo harmonico da nota (que tem
+			// exatamente a METADE do periodo do fundamental) for forte o
+			// suficiente, o CMND dele pode passar no threshold ANTES da
+			// busca chegar no periodo verdadeiro -- e ai a nota inteira
+			// e detectada uma OITAVA ACIMA do que realmente foi cantado.
+			// Isso fica mais provavel em notas mais agudas, onde o
+			// periodo fundamental e curto e o do segundo harmonico
+			// (metade disso) ainda cabe dentro da faixa de busca.
+			//
+			// Verificacao: o periodo verdadeiro, se for esse erro, e o
+			// DOBRO do tau encontrado. Se esse tau dobrado tambem for um
+			// candidato razoavelmente bom (CMND baixo o suficiente),
+			// preferimos ele -- e bem mais provavel ser o fundamental
+			// real do que o segundo harmonico sozinho.
+			int doubledTau = tau * 2;
+			if (doubledTau <= maxTau && yinBuffer[doubledTau] < threshold * 1.5f)
+			{
+				// desce ate o minimo local tambem no candidato dobrado
+				while (doubledTau + 1 <= maxTau && yinBuffer[doubledTau + 1] < yinBuffer[doubledTau])
+					++doubledTau;
+
+				return doubledTau;
+			}
+
 			return tau;
 		}
 	}
@@ -104,20 +133,20 @@ int PitchDetector::absoluteThreshold() {
 	//		return tau;
 	//	}
 	//}
-	 
+
 	// Não achou nenhum período confiável -> provavelmente silêncio ou ruído sem pitch claro
 	return -1;
 }
 
 // Refina o tau encontrado usando interpolação parabólica (melhora bastante a precisão da frequência final)
 float PitchDetector::parabolicInterpolation(int tauEstimate) {
-	int yinBufferSize = (int) yinBuffer.size();
+	int yinBufferSize = (int)yinBuffer.size();
 
 	int x0 = (tauEstimate < 1) ? tauEstimate : tauEstimate - 1;
 	int x2 = (tauEstimate + 1 < yinBufferSize) ? tauEstimate + 1 : tauEstimate;
 
 	if (x0 == tauEstimate)
-		return (yinBuffer[tauEstimate] <= yinBuffer[x2]) ? (float) tauEstimate : (float) x2;
+		return (yinBuffer[tauEstimate] <= yinBuffer[x2]) ? (float)tauEstimate : (float)x2;
 
 	if (x2 == tauEstimate)
 		return (yinBuffer[tauEstimate] <= yinBuffer[x0]) ? (float)tauEstimate : (float)x0;
