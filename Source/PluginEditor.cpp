@@ -3,8 +3,7 @@
 #include <vector>
 
 VoxiumAudioProcessorEditor::VoxiumAudioProcessorEditor(VoxiumAudioProcessor& p)
-	: AudioProcessorEditor(&p), audioProcessor(p)
-{
+	: AudioProcessorEditor(&p), audioProcessor(p) {
 	setLookAndFeel(&voxiumLookAndFeel);
 	setSize(420, 460);
 
@@ -40,8 +39,7 @@ VoxiumAudioProcessorEditor::VoxiumAudioProcessorEditor(VoxiumAudioProcessor& p)
 	addAndMakeVisible(harmonyLabel);
 
 	// --- Legendas dos seletores ---
-	auto setupFieldLabel = [this](juce::Label& label, const juce::String& text)
-		{
+	auto setupFieldLabel = [this](juce::Label& label, const juce::String& text) {
 			label.setText(text, juce::dontSendNotification);
 			label.setFont(juce::Font(juce::FontOptions(11.0f)).withExtraKerningFactor(0.1f));
 			label.setColour(juce::Label::textColourId, VoxiumColours::textSecondary);
@@ -53,61 +51,37 @@ VoxiumAudioProcessorEditor::VoxiumAudioProcessorEditor(VoxiumAudioProcessor& p)
 	setupFieldLabel(scaleFieldLabel, "SCALE");
 	setupFieldLabel(harmonyFieldLabel, "HARMONY");
 
-	// --- ComboBoxes (mesma logica de antes, so o visual muda via LookAndFeel) ---
+	// --- ComboBoxes: os itens continuam precisando bater, na mesma ordem,
+	// com as "choices" dos parametros no APVTS (ver createParameterLayout
+	// no PluginProcessor.cpp) -- mas quem sincroniza selecao <-> parametro
+	// agora e o ComboBoxAttachment, nao mais um onChange manual.
 	static const juce::StringArray keyNames{ "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
 	for (int i = 0; i < keyNames.size(); ++i)
 		keyComboBox.addItem(keyNames[i], i + 1);
-
-	keyComboBox.setSelectedId(1, juce::dontSendNotification);
-	keyComboBox.onChange = [this]
-		{
-			audioProcessor.setSelectedKey(keyComboBox.getSelectedId() - 1);
-		};
 	addAndMakeVisible(keyComboBox);
+	keyAttachment = std::make_unique<ComboBoxAttachment>(audioProcessor.getAPVTS(), "key", keyComboBox);
 
-	static const juce::StringArray scaleNames{ "Major", "Natural Minor", "Harmonic Minor", "Melodic Minor",
-												 "Major Pentatonic", "Minor Pentatonic", "Dorian", "Phrygian",
-												 "Lydian", "Mixolydian", "Locrian" };
+	static const juce::StringArray scaleNames{ "Major", "Natural Minor", "Harmonic Minor", "Melodic Minor" };
 	for (int i = 0; i < scaleNames.size(); ++i)
 		scaleComboBox.addItem(scaleNames[i], i + 1);
-
-	scaleComboBox.setSelectedId(1, juce::dontSendNotification);
-	scaleComboBox.onChange = [this]
-		{
-			audioProcessor.setSelectedScale(static_cast<ScaleType>(scaleComboBox.getSelectedId() - 1));
-		};
 	addAndMakeVisible(scaleComboBox);
+	scaleAttachment = std::make_unique<ComboBoxAttachment>(audioProcessor.getAPVTS(), "scale", scaleComboBox);
 
-	static const std::vector<std::pair<juce::String, int>> harmonyOptions = {
-		{ "3rd below", -2 },
-		{ "Unison",     0 },
-		{ "3rd above",  2 },
-		{ "5th above",  4 },
-		{ "Octave",     7 }
-	};
-
-	for (int i = 0; i < (int)harmonyOptions.size(); ++i)
-		harmonyComboBox.addItem(harmonyOptions[(size_t)i].first, i + 1);
-
-	harmonyComboBox.setSelectedId(3, juce::dontSendNotification);
-	harmonyComboBox.onChange = [this]
-		{
-			static const std::vector<int> offsets = { -2, 0, 2, 4, 7 };
-			int selectedIndex = harmonyComboBox.getSelectedId() - 1;
-			audioProcessor.setHarmonyDegreeOffset(offsets[(size_t)selectedIndex]);
-		};
+	static const juce::StringArray harmonyNames{ "3rd below", "Unison", "3rd above", "5th above", "Octave" };
+	for (int i = 0; i < harmonyNames.size(); ++i)
+		harmonyComboBox.addItem(harmonyNames[i], i + 1);
 	addAndMakeVisible(harmonyComboBox);
+	harmonyAttachment = std::make_unique<ComboBoxAttachment>(audioProcessor.getAPVTS(), "harmony", harmonyComboBox);
+
 
 	startTimerHz(15);
 }
 
-VoxiumAudioProcessorEditor::~VoxiumAudioProcessorEditor()
-{
+VoxiumAudioProcessorEditor::~VoxiumAudioProcessorEditor() {
 	setLookAndFeel(nullptr);
 }
 
-void VoxiumAudioProcessorEditor::paint(juce::Graphics& g)
-{
+void VoxiumAudioProcessorEditor::paint(juce::Graphics& g) {
 	g.fillAll(VoxiumColours::background);
 
 	// pontinho accent do lado do titulo, um toque de identidade visual
@@ -121,8 +95,7 @@ void VoxiumAudioProcessorEditor::paint(juce::Graphics& g)
 	g.drawHorizontalLine(dividerY, 24.0f, (float)getWidth() - 24.0f);
 }
 
-void VoxiumAudioProcessorEditor::resized()
-{
+void VoxiumAudioProcessorEditor::resized() {
 	auto area = getLocalBounds().reduced(24, 20);
 
 	titleLabel.setBounds(area.removeFromTop(20));
@@ -153,12 +126,10 @@ void VoxiumAudioProcessorEditor::resized()
 	layoutField(harmonyFieldLabel, harmonyComboBox);
 }
 
-void VoxiumAudioProcessorEditor::timerCallback()
-{
+void VoxiumAudioProcessorEditor::timerCallback() {
 	float freq = audioProcessor.getCurrentPitch();
 
-	if (freq > 0.0f)
-	{
+	if (freq > 0.0f) {
 		NoteInfo note = audioProcessor.getCurrentNote();
 		NoteInfo harmony = audioProcessor.getHarmonyNote();
 		bool inScale = audioProcessor.isCurrentNoteInScale();
@@ -172,8 +143,7 @@ void VoxiumAudioProcessorEditor::timerCallback()
 
 		harmonyLabel.setText(juce::String(juce::CharPointer_UTF8("\xe2\x86\x92 ")) + harmony.name, juce::dontSendNotification);
 	}
-	else
-	{
+	else {
 		noteLabel.setText("--", juce::dontSendNotification);
 		frequencyLabel.setText("Waiting for audio...", juce::dontSendNotification);
 		scaleStatusLabel.setText("", juce::dontSendNotification);

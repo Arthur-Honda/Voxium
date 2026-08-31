@@ -35,5 +35,14 @@ private:
 	juce::ComboBox scaleComboBox;
 	juce::ComboBox harmonyComboBox;
 
+
+	// liga cada ComboBox direto no parametro do APVTS -- cuida de
+	// sincronizar UI<->parametro, e do save/restore de estado
+	using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+	std::unique_ptr<ComboBoxAttachment> keyAttachment;
+	std::unique_ptr<ComboBoxAttachment> scaleAttachment;
+	std::unique_ptr<ComboBoxAttachment> harmonyAttachment;
+
+
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VoxiumAudioProcessorEditor)
 };

@@ -2,6 +2,25 @@
 #include "PluginEditor.h"
 #include <algorithm>
 
+juce::AudioProcessorValueTreeState::ParameterLayout VoxiumAudioProcessor::createParameterLayout() {
+	std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+
+	juce::StringArray keyChoices{ "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+	params.push_back(std::make_unique<juce::AudioParameterChoice>("key", "Key", keyChoices, 0));
+
+	// IMPORTANTE: essa lista precisa bater, na mesma ordem, com o enum
+	// ScaleType (ScaleUtils.h) e com o scaleComboBox do PluginEditor
+	juce::StringArray scaleChoices{ "Major", "Natural Minor", "Harmonic Minor", "Melodic Minor" };
+	params.push_back(std::make_unique<juce::AudioParameterChoice>("scale", "Scale", scaleChoices, 0));
+
+	// IMPORTANTE: essa ordem precisa bater com harmonyOffsets[] (no .h)
+	// e com o harmonyComboBox do PluginEditor
+	juce::StringArray harmonyChoices{ "3rd below", "Unison", "3rd above", "5th above", "Octave" };
+	params.push_back(std::make_unique<juce::AudioParameterChoice>("harmony", "Harmony", harmonyChoices, 2));
+
+	return { params.begin(), params.end() };
+}
+
 VoxiumAudioProcessor::VoxiumAudioProcessor()
 	: AudioProcessor(BusesProperties()
 #if ! JucePlugin_IsMidiEffect
@@ -11,17 +30,17 @@ VoxiumAudioProcessor::VoxiumAudioProcessor()
 		.withOutput("Output", juce::AudioChannelSet::stereo(), true)
 #endif
 	),
-	parameters(*this, nullptr, "PARAMETERS", {})
-{
+	parameters(*this, nullptr, "PARAMETERS", createParameterLayout()) {
+	keyParam = parameters.getRawParameterValue("key");
+	scaleParam = parameters.getRawParameterValue("scale");
+	harmonyParam = parameters.getRawParameterValue("harmony");
 }
 
 VoxiumAudioProcessor::~VoxiumAudioProcessor() {}
 
 // ==============================================================================
 
-const juce::String VoxiumAudioProcessor::getName() const {
-	return JucePlugin_Name; // retorna o nome do plugin (Voxium)
-}
+const juce::String VoxiumAudioProcessor::getName() const { return JucePlugin_Name; }
 
 bool VoxiumAudioProcessor::acceptsMidi() const {
 #if JucePlugin_WantsMidiInput
@@ -47,23 +66,15 @@ bool VoxiumAudioProcessor::isMidiEffect() const {
 #endif
 }
 
-double VoxiumAudioProcessor::getTailLengthSeconds() const {
-	return 0.0;
-}
+double VoxiumAudioProcessor::getTailLengthSeconds() const { return 0.0; }
 
-int VoxiumAudioProcessor::getNumPrograms() {
-	return 1;
-}
-
-int VoxiumAudioProcessor::getCurrentProgram() {
-	return 0;
-}
-
+int VoxiumAudioProcessor::getNumPrograms() { return 1; }
+int VoxiumAudioProcessor::getCurrentProgram() { return 0; }
 void VoxiumAudioProcessor::setCurrentProgram(int index) { juce::ignoreUnused(index); }
 
 const juce::String VoxiumAudioProcessor::getProgramName(int index) {
 	juce::ignoreUnused(index);
-	return{};
+	return {};
 }
 
 void VoxiumAudioProcessor::changeProgramName(int index, const juce::String& newName) {
@@ -73,27 +84,26 @@ void VoxiumAudioProcessor::changeProgramName(int index, const juce::String& newN
 // ==============================================================================
 
 void VoxiumAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
-	pitchDetector.prepare(sampleRate, pitchAnalysisSize);
-	pitchAnalysisBuffer.assign(pitchAnalysisSize, 0.0f);
-
 	// samplesPerBlock aqui e so um "tamanho tipico" que o host informa antecipadamente;
 	// o numSamples real de cada processBlock() pode variar, por isso o PitchShifter
 	// usa FIFOs internas (ver PitchShifter.h) -- mas passamos esse valor pra ele
 	// dimensionar as FIFOs com folga suficiente.
+	pitchDetector.prepare(sampleRate, pitchAnalysisSize);
+	pitchAnalysisBuffer.assign(pitchAnalysisSize, 0.0f);
+
 	pitchShifter.prepare(sampleRate, samplesPerBlock);
 	shifterOutputBuffer.assign((size_t)samplesPerBlock, 0.0f);
 
+	setLatencySamples(pitchShifter.getLatencySamples());
 	// avisa a DAW da latencia introduzida pelo RubberBandStretcher, pra
 	// ela compensar automaticamente (PDC) -- sem isso a harmonia ficaria
 	// visivelmente atrasada em relacao a outras tracks/plugins
-	setLatencySamples(pitchShifter.getLatencySamples());
-
 	smoothedPeriodInSamples = 0.0f;
 	smoothedPitchRatio = 1.0f;
 	blocksSinceLastValidPitch = 0;
 }
 
-void VoxiumAudioProcessor::releaseResources() {} // liberar recursos que foram alocados/necessários durante o processamento.
+void VoxiumAudioProcessor::releaseResources() {}  // liberar recursos que foram alocados/necessários durante o processamento.
 
 bool VoxiumAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
 #if JucePlugin_IsMidiEffect 
@@ -113,8 +123,7 @@ bool VoxiumAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) co
 #endif
 }
 
-void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
-	juce::MidiBuffer& midiMessages) {
+void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages) {
 	juce::ignoreUnused(midiMessages);
 
 	juce::ScopedNoDenormals noDenormals;
@@ -148,57 +157,50 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 		// --- Suavizacao do periodo detectado (igual a logica antiga do PSOLA) ---
 		float rawPeriodInSamples = (detectedFrequency > 0.0f) ? (float)(getSampleRate() / detectedFrequency) : 0.0f;
 
-		// quantos blocos de tolerancia antes de considerar "silencio de verdade" (~400ms)
 		int holdBlocks = (int)(0.4 * getSampleRate() / (double)numSamples) + 1;
 
 		bool wasSilent = (smoothedPeriodInSamples <= 0.0f);
 
-		if (rawPeriodInSamples > 0.0f)
-		{
+		if (rawPeriodInSamples > 0.0f) {
 			if (wasSilent)
-			{
 				// Saindo do silencio pra uma nota nova: nao tem "nota anterior"
 				// pra fazer transicao suave, entao aplica direto -- suavizar
 				// aqui so adicionaria atraso perceptivel no ataque da nota
 				// (alem do atraso inevitavel da propria deteccao YIN).
 				smoothedPeriodInSamples = rawPeriodInSamples;
-			}
-			else
-			{
+			else {
 				const float smoothingAmount = 0.2f;
 				smoothedPeriodInSamples += (rawPeriodInSamples - smoothedPeriodInSamples) * smoothingAmount;
 			}
 
 			blocksSinceLastValidPitch = 0;
 		}
-		else
-		{
+		else {
 			blocksSinceLastValidPitch++;
 
 			if (blocksSinceLastValidPitch > holdBlocks)
-				smoothedPeriodInSamples = 0.0f; // silencio de verdade
+				smoothedPeriodInSamples = 0.0f;
 		}
 
 		float periodInSamples = smoothedPeriodInSamples;
 
 		// --- Calcula o pitchRatio de verdade, baseado na harmonia escolhida ---
 		float pitchRatio = 1.0f;
+		int harmonyDegreeOffset = getHarmonyDegreeOffset();
 
 		if (periodInSamples > 0.0f) {
 			float smoothedFrequency = (float)(getSampleRate() / periodInSamples);
 			NoteInfo originalNote = NoteUtils::frequencyToNote(smoothedFrequency);
 
-
 			if (originalNote.midiNoteNumber >= 0) {
-				if (harmonyDegreeOffset == 0)
-				{
+				if (harmonyDegreeOffset == 0) {
 					// Unison: sempre exatamente o pitch original, sem "snap" de escala
 					// (evita modulacao rapida de pitch por pequenas variacoes vocais)
 					pitchRatio = 1.0f;
 				}
 				else {
 					int harmonyMidiNote = HarmonyUtils::getHarmonyNote(
-						originalNote.midiNoteNumber, selectedKeyRootNote, selectedScaleType, harmonyDegreeOffset);
+						originalNote.midiNoteNumber, getSelectedKeyRootNote(), getSelectedScaleType(), harmonyDegreeOffset);
 
 					int semitoneDifference = harmonyMidiNote - originalNote.midiNoteNumber;
 					pitchRatio = std::pow(2.0f, (float)semitoneDifference / 12.0f);
@@ -206,31 +208,13 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 			}
 		}
 
-		// --- Pitch shifting de verdade, via RubberBand (PitchShifter) ---
 		if ((int)shifterOutputBuffer.size() < numSamples)
 			shifterOutputBuffer.assign((size_t)numSamples, 0.0f);
 
-		// IMPORTANTE: suaviza o pitchRatio antes de mandar pro shifter --
-		// mas RAPIDO, e SO em transicoes nota-a-nota. O objetivo aqui e
-		// evitar uma descontinuidade de UMA amostra (que soa como
-		// "zap"/clique) quando voce ja estava cantando uma nota e muda pra
-		// outra, NAO criar um portamento audivel nem atrasar o ataque de
-		// uma nota nova saindo do silencio (isso so adicionaria atraso
-		// perceptivel logo no inicio de cada frase cantada).
-		// Um fator baixo (ex: 0.15) cria uma rampa longa demais (100-250ms)
-		// que, em saltos GRANDES de harmonia (ex: mais de uma oitava),
-		// fica audivel como um glissando passando por notas que nao fazem
-		// parte da harmonia real -- soa como "mistura de notas". Um fator
-		// alto (ex: 0.6-0.8) resolve os dois problemas: rapido o
-		// suficiente pra nao soar como slide, mas ainda suaviza a
-		// transicao de amostra a amostra o bastante pra tirar o clique.
-		if (wasSilent && rawPeriodInSamples > 0.0f)
-		{
-			// ataque de nota nova: aplica o pitchRatio na hora, sem suavizar
+		if (wasSilent && rawPeriodInSamples > 0.0f) {
 			smoothedPitchRatio = pitchRatio;
 		}
-		else
-		{
+		else {
 			const float ratioSmoothingAmount = 0.67f;
 			smoothedPitchRatio += (pitchRatio - smoothedPitchRatio) * ratioSmoothingAmount;
 		}
@@ -262,11 +246,16 @@ juce::AudioProcessorEditor* VoxiumAudioProcessor::createEditor() {
 // ==============================================================================
 
 void VoxiumAudioProcessor::getStateInformation(juce::MemoryBlock& destData) {
-	juce::ignoreUnused(destData);
+	auto state = parameters.copyState();
+	std::unique_ptr<juce::XmlElement> xml(state.createXml());
+	copyXmlToBinary(*xml, destData);
 }
 
 void VoxiumAudioProcessor::setStateInformation(const void* data, int sizeInBytes) {
-	juce::ignoreUnused(data, sizeInBytes);
+	std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
+
+	if (xmlState != nullptr && xmlState->hasTagName(parameters.state.getType()))
+		parameters.replaceState(juce::ValueTree::fromXml(*xmlState));
 }
 
 // ==============================================================================
