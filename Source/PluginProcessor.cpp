@@ -18,6 +18,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout VoxiumAudioProcessor::create
 	juce::StringArray harmonyChoices{ "3rd below", "Unison", "3rd above", "5th above", "Octave" };
 	params.push_back(std::make_unique<juce::AudioParameterChoice>("harmony", "Harmony", harmonyChoices, 2));
 
+	// mix dry/wet: 0% = so a voz original, 100% = so a harmonia (comportamento
+	// antigo, por isso o default continua 100 -- nao muda o som de quem ja usava)
+	params.push_back(std::make_unique<juce::AudioParameterFloat>(
+		"mix", "Mix", juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f), 100.0f));
+
 	return { params.begin(), params.end() };
 }
 
@@ -34,6 +39,7 @@ VoxiumAudioProcessor::VoxiumAudioProcessor()
 	keyParam = parameters.getRawParameterValue("key");
 	scaleParam = parameters.getRawParameterValue("scale");
 	harmonyParam = parameters.getRawParameterValue("harmony");
+	mixParam = parameters.getRawParameterValue("mix");
 }
 
 VoxiumAudioProcessor::~VoxiumAudioProcessor() {}
@@ -227,10 +233,16 @@ void VoxiumAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 		// so pra deteccao de pitch (ver comentario em PitchShifter.h).
 		pitchShifter.process(firstChannelData, shifterOutputBuffer.data(), numSamples);
 
+		// mistura dry (voz original) e wet (harmonia) conforme o parametro "mix"
+		float mixAmount = mixParam->load() / 100.0f; // 0.0 = so dry, 1.0 = so wet
+
 		for (int channel = 0; channel < totalNumOutputChannels; ++channel) {
 			auto* channelOut = buffer.getWritePointer(channel);
-			for (int i = 0; i < numSamples; ++i)
-				channelOut[i] = shifterOutputBuffer[(size_t)i];
+			for (int i = 0; i < numSamples; ++i) {
+				float dry = firstChannelData[i];
+				float wet = shifterOutputBuffer[(size_t)i];
+				channelOut[i] = dry * (1.0f - mixAmount) + wet * mixAmount;
+			}
 		}
 	}
 }

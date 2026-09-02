@@ -80,6 +80,7 @@ private:
 	std::atomic<float>* keyParam = nullptr;
 	std::atomic<float>* scaleParam = nullptr;
 	std::atomic<float>* harmonyParam = nullptr;
+	std::atomic<float>* mixParam = nullptr;
 
 	// os offsets de grau de escala continuam os mesmos de antes, so que
 	// agora indexados pelo indice do parametro "harmony" (0-4), nao mais

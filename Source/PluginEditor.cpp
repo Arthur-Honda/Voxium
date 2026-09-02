@@ -5,7 +5,7 @@
 VoxiumAudioProcessorEditor::VoxiumAudioProcessorEditor(VoxiumAudioProcessor& p)
 	: AudioProcessorEditor(&p), audioProcessor(p) {
 	setLookAndFeel(&voxiumLookAndFeel);
-	setSize(420, 460);
+	setSize(420, 540);
 
 	// --- Titulo ---
 	titleLabel.setText("VOXIUM", juce::dontSendNotification);
@@ -50,6 +50,8 @@ VoxiumAudioProcessorEditor::VoxiumAudioProcessorEditor(VoxiumAudioProcessor& p)
 	setupFieldLabel(keyFieldLabel, "KEY");
 	setupFieldLabel(scaleFieldLabel, "SCALE");
 	setupFieldLabel(harmonyFieldLabel, "HARMONY");
+	setupFieldLabel(mixFieldLabel, "MIX");
+	mixFieldLabel.setJustificationType(juce::Justification::centred);
 
 	// --- ComboBoxes: os itens continuam precisando bater, na mesma ordem,
 	// com as "choices" dos parametros no APVTS (ver createParameterLayout
@@ -72,6 +74,14 @@ VoxiumAudioProcessorEditor::VoxiumAudioProcessorEditor(VoxiumAudioProcessor& p)
 		harmonyComboBox.addItem(harmonyNames[i], i + 1);
 	addAndMakeVisible(harmonyComboBox);
 	harmonyAttachment = std::make_unique<ComboBoxAttachment>(audioProcessor.getAPVTS(), "harmony", harmonyComboBox);
+
+	mixSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+	mixSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 18);
+	mixSlider.setColour(juce::Slider::textBoxTextColourId, VoxiumColours::textPrimary);
+	mixSlider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
+	mixSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+	addAndMakeVisible(mixSlider);
+	mixAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.getAPVTS(), "mix", mixSlider);
 
 
 	startTimerHz(15);
@@ -111,8 +121,7 @@ void VoxiumAudioProcessorEditor::resized() {
 
 	area.removeFromTop(28); // espaco pra linha divisoria desenhada no paint()
 
-	auto layoutField = [&area](juce::Label& fieldLabel, juce::ComboBox& box)
-		{
+	auto layoutField = [&area](juce::Label& fieldLabel, juce::ComboBox& box) {
 			auto row = area.removeFromTop(56);
 			fieldLabel.setBounds(row.removeFromTop(16));
 			row.removeFromTop(4);
@@ -124,6 +133,12 @@ void VoxiumAudioProcessorEditor::resized() {
 	layoutField(scaleFieldLabel, scaleComboBox);
 	area.removeFromTop(12);
 	layoutField(harmonyFieldLabel, harmonyComboBox);
+
+	area.removeFromTop(20);
+	mixFieldLabel.setBounds(area.removeFromTop(16));
+	area.removeFromTop(4);
+	auto sliderArea = area.removeFromTop(90);
+	mixSlider.setBounds(sliderArea.withSizeKeepingCentre(90, 90));
 }
 
 void VoxiumAudioProcessorEditor::timerCallback() {

@@ -49,6 +49,37 @@ public:
 		return label.getFont();
 	}
 
+	// Knob rotativo minimalista: trilho circular fino, arco de valor em
+	// violeta, sem ponteiro/agulha nem textura -- mesmo espirito visual
+	// do resto do tema (linhas finas, um unico accent)
+	void drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
+		float sliderPosProportional, float rotaryStartAngle, float rotaryEndAngle, juce::Slider&) override
+	{
+		auto bounds = juce::Rectangle<float>((float)x, (float)y, (float)width, (float)height).reduced(4.0f);
+		float radius = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.5f;
+		auto centre = bounds.getCentre();
+		float lineThickness = 3.0f;
+
+		// trilho de fundo (o "range" inteiro do knob)
+		juce::Path track;
+		track.addCentredArc(centre.x, centre.y, radius, radius, 0.0f, rotaryStartAngle, rotaryEndAngle, true);
+		g.setColour(VoxiumColours::border);
+		g.strokePath(track, juce::PathStrokeType(lineThickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+		// arco preenchido ate o valor atual
+		float angle = rotaryStartAngle + sliderPosProportional * (rotaryEndAngle - rotaryStartAngle);
+		juce::Path valueArc;
+		valueArc.addCentredArc(centre.x, centre.y, radius, radius, 0.0f, rotaryStartAngle, angle, true);
+		g.setColour(VoxiumColours::accent);
+		g.strokePath(valueArc, juce::PathStrokeType(lineThickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+		// marcador (linha fina) na posicao atual
+		juce::Point<float> markerEnd(centre.x + (radius - 8.0f) * std::cos(angle - juce::MathConstants<float>::halfPi),
+			centre.y + (radius - 8.0f) * std::sin(angle - juce::MathConstants<float>::halfPi));
+		g.setColour(VoxiumColours::textPrimary);
+		g.drawLine({ centre, markerEnd }, 2.0f);
+	}
+
 	// Caixa retangular arredondada, fina, com destaque violeta quando aberta --
 	// substitui o visual "padrao Windows" default do JUCE
 	void drawComboBox(juce::Graphics& g, int width, int height, bool isButtonDown,

@@ -30,10 +30,12 @@ private:
 	juce::Label keyFieldLabel;
 	juce::Label scaleFieldLabel;
 	juce::Label harmonyFieldLabel;
+	juce::Label mixFieldLabel;
 
 	juce::ComboBox keyComboBox;
 	juce::ComboBox scaleComboBox;
 	juce::ComboBox harmonyComboBox;
+	juce::Slider mixSlider;
 
 
 	// liga cada ComboBox direto no parametro do APVTS -- cuida de
@@ -42,6 +44,7 @@ private:
 	std::unique_ptr<ComboBoxAttachment> keyAttachment;
 	std::unique_ptr<ComboBoxAttachment> scaleAttachment;
 	std::unique_ptr<ComboBoxAttachment> harmonyAttachment;
+	std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> mixAttachment;
 
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VoxiumAudioProcessorEditor)
