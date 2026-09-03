@@ -10,7 +10,7 @@ int HarmonyUtils::snapToScale(int midiNote, int keyRootNote, ScaleType scaleType
 
 	// se a nota já pertence à escala, retorna ela mesma
 	for (int scaleNote : scaleNotes) {
-		if (scaleNote == noteClass)
+		if (scaleNote % 12 == noteClass)
 			return midiNote;
 	}
 
@@ -19,10 +19,10 @@ int HarmonyUtils::snapToScale(int midiNote, int keyRootNote, ScaleType scaleType
 	int smallestDistance = INT_MAX;
 
 	for (int scaleNote : scaleNotes) {
-		// testa a nota da escala tanto na oitava atual quanto na de cima/baixo,
-		// pra achar de fato a mais próxima em termos de distância real (não só de classe)
+		int scaleNoteClass = ((scaleNote % 12) + 12) % 12;
+
 		for (int octaveShift = -1; octaveShift <= 1; ++octaveShift) {
-			int candidate = scaleNote + (12 * ((midiNote / 12) + octaveShift));
+			int candidate = scaleNoteClass + (12 * ((midiNote / 12) + octaveShift));
 			int distance = std::abs(candidate - midiNote);
 
 			if (distance < smallestDistance) {
@@ -47,11 +47,10 @@ int HarmonyUtils::getHarmonyNote(int originalMidiNote, int keyRootNote, ScaleTyp
 	// monta a escala "espalhada" em várias oitavas, como uma lista contínua de graus,
 	// pra facilitar navegar N graus pra frente/trás sem se preocupar com virada de oitava
 	int noteClass = ((snappedNote % 12) + 12) % 12;
-	int baseOctave = snappedNote / 12;
 
 	int degreeIndex = -1;
 	for (int i = 0; i < notesPerOctave; ++i) {
-		if (scaleNotes[(size_t)i] == noteClass) {
+		if (scaleNotes[(size_t)i % 12] == noteClass) {
 			degreeIndex = i;
 			break;
 		}
@@ -67,8 +66,10 @@ int HarmonyUtils::getHarmonyNote(int originalMidiNote, int keyRootNote, ScaleTyp
 	int octaveOffset = (int)std::floor((float)totalDegreeIndex / (float)notesPerOctave);
 	int newDegreeIndex = ((totalDegreeIndex % notesPerOctave) + notesPerOctave) % notesPerOctave;
 
-	int harmonyNoteClass = scaleNotes[(size_t)newDegreeIndex];
-	int harmonyMidiNote = harmonyNoteClass + (12 * (baseOctave + octaveOffset));
+	int startPosition = scaleNotes[(size_t)degreeIndex];
+	int targetPosition = scaleNotes[(size_t)newDegreeIndex] + (12 * octaveOffset);
 
-	return harmonyMidiNote;
+	int semitoneShift = targetPosition - startPosition;
+
+	return snappedNote + semitoneShift;
 }

@@ -25,9 +25,23 @@ std::vector<int> ScaleUtils::getScaleNotes(int keyRootNote, ScaleType scaleType)
 	scaleNotes.reserve(pattern.size());
 
 	for (int interval : pattern) {
-		// soma o intervalo a tonica, e usa modulo 12 pra "dar a volta" na roda cromatica
-		// (ex: se a tonica for A=9 e o intervalo for 4, 9+4=13 -> 13%12=1 -> C#)
-		int note = (keyRootNote + interval) % 12;
+		// IMPORTANTE: NAO aplica %12 aqui. O padrao de intervalos (pattern)
+		// ja e estritamente crescente (0,2,4,5,7,9,11...), entao
+		// keyRootNote + interval tambem e SEMPRE estritamente crescente,
+		// independente da tonica -- so pode passar de 12 (ex: root=5,
+		// ultimo intervalo=11 -> 16), nunca "dar a volta" no meio da lista.
+		//
+		// Se aplicassemos %12 aqui (como era antes), a lista deixava de
+		// ser crescente pra qualquer tonica != C (ex: Fa Maior virava
+		// {5,7,9,10,0,2,4} -- os ultimos valores menores que os primeiros,
+		// mesmo sendo notas mais agudas). O HarmonyUtils depende dessa
+		// lista ser crescente pra calcular em qual oitava a harmonia cai;
+		// quebrar isso fazia a harmonia sair uma oitava errada em
+		// qualquer tonica que nao fosse C.
+		//
+		// Callers que precisam da CLASSE da nota (0-11) devem aplicar
+		// %12 no valor retornado (ver isNoteInScale abaixo).
+		int note = keyRootNote + interval;
 		scaleNotes.push_back(note);
 	}
 
