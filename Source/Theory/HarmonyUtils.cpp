@@ -10,6 +10,8 @@ int HarmonyUtils::snapToScale(int midiNote, int keyRootNote, ScaleType scaleType
 
 	// se a nota já pertence à escala, retorna ela mesma
 	for (int scaleNote : scaleNotes) {
+		// testa a nota da escala tanto na oitava atual quanto na de cima/baixo,
+		// pra achar de fato a mais próxima em termos de distância real (não só de classe)
 		if (scaleNote % 12 == noteClass)
 			return midiNote;
 	}
